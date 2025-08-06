@@ -78,32 +78,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-900 mb-2">Demo Credentials</h4>
-            <div className="text-xs text-blue-700 space-y-1">
-              <p>
-                <strong>Email:</strong> dr.smith@hospital.com
-              </p>
-              <p>
-                <strong>Password:</strong> demo123
-              </p>
-              <p className="text-blue-600">Or use any email/password combination</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2 w-full bg-transparent"
-              onClick={() => {
-                setEmail("dr.smith@hospital.com")
-                setPassword("demo123")
-              }}
-            >
-              Use Demo Credentials
-            </Button>
-          </div>
-
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               {"Don't have an account? "}

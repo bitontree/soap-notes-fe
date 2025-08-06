@@ -1,88 +1,201 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Header } from "@/components/layout/header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Filter, Calendar, FileText, Eye, Download, MoreHorizontal } from "lucide-react"
+import { Search, Filter, Calendar, FileText, Eye, Download, MoreHorizontal, Loader2, CheckCircle, Copy, User, Stethoscope, ClipboardList, Target, X } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { soapApi } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/auth-context"
 
-const mockNotes = [
-  {
-    id: "1",
-    patient: "John Doe",
-    patientId: "P001",
-    date: "2024-01-15",
-    time: "10:30 AM",
-    type: "Follow-up",
-    status: "completed",
-    duration: "15:30",
-    chief_complaint: "Persistent headaches",
-  },
-  {
-    id: "2",
-    patient: "Jane Smith",
-    patientId: "P002",
-    date: "2024-01-15",
-    time: "09:15 AM",
-    type: "Initial Consultation",
-    status: "completed",
-    duration: "22:45",
-    chief_complaint: "Chest pain evaluation",
-  },
-  {
-    id: "3",
-    patient: "Robert Johnson",
-    patientId: "P003",
-    date: "2024-01-14",
-    time: "03:45 PM",
-    type: "Annual Checkup",
-    status: "completed",
-    duration: "18:20",
-    chief_complaint: "Routine physical examination",
-  },
-  {
-    id: "4",
-    patient: "Mary Wilson",
-    patientId: "P004",
-    date: "2024-01-14",
-    time: "02:30 PM",
-    type: "Follow-up",
-    status: "completed",
-    duration: "12:15",
-    chief_complaint: "Diabetes management",
-  },
-  {
-    id: "5",
-    patient: "David Brown",
-    patientId: "P005",
-    date: "2024-01-13",
-    time: "11:00 AM",
-    type: "Urgent Care",
-    status: "completed",
-    duration: "25:10",
-    chief_complaint: "Acute abdominal pain",
-  },
-]
+interface SOAPNote {
+  id: string
+  user_id: string
+  soap_data: {
+    subjective: any  // Object in your backend
+    objective: any   // Object in your backend
+    assessment: string
+    plan: any        // Object in your backend
+    patient_id?: string  // Optional patient ID field
+  }
+  summary: string
+  transcript: string
+  diarized_transcript: string
+  s3_key: string
+  created_at: string
+}
+
 
 export default function HistoryPage() {
+  const [notes, setNotes] = useState<SOAPNote[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalNotes, setTotalNotes] = useState(0)
+  const [selectedNote, setSelectedNote] = useState<SOAPNote | null>(null)
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+  const { toast } = useToast()
+  const { user } = useAuth()
 
-  const filteredNotes = mockNotes.filter((note) => {
+  // Fetch SOAP notes from API
+  useEffect(() => {
+    if (user) {
+      console.log('👤 User is authenticated:', user.email)
+      loadNotes()
+    } else {
+      console.log('❌ User is not authenticated')
+      setIsLoading(false)
+    }
+  }, [currentPage, user])
+
+  const loadNotes = async () => {
+    try {
+      setIsLoading(true)
+      const response = await soapApi.getNotes(currentPage, 10)
+      setNotes(response.soap_notes)
+      setTotalPages(response.pagination.total_pages)
+      setTotalNotes(response.pagination.total)
+    } catch (error) {
+      console.error('Failed to load SOAP notes:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load SOAP notes. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Filter notes based on search and filters
+  const filteredNotes = notes.filter((note) => {
     const matchesSearch =
-      note.patient.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      note.patientId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      note.chief_complaint.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "all" || note.status === statusFilter
-    const matchesType = typeFilter === "all" || note.type === typeFilter
+      note.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      note.transcript.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      note.soap_data.assessment.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (typeof note.soap_data.subjective === 'string' ? note.soap_data.subjective.toLowerCase().includes(searchTerm.toLowerCase()) : true)
+    
+    // For now, all notes are considered "completed" since we don't have status in API
+    const matchesStatus = statusFilter === "all" || statusFilter === "completed"
+    
+    // Type filter can be based on assessment content
+    const matchesType = typeFilter === "all" || 
+      note.soap_data.assessment.toLowerCase().includes(typeFilter.toLowerCase())
 
     return matchesSearch && matchesStatus && matchesType
   })
+
+  // Helper function to safely extract string from object
+  const extractText = (data: any, maxLength: number = 100): string => {
+    if (typeof data === 'string') {
+      return data.length > maxLength ? data.substring(0, maxLength) + '...' : data
+    }
+    if (typeof data === 'object' && data !== null) {
+      // Try to extract meaningful text from object
+      const textValues = Object.values(data).filter(v => typeof v === 'string').join(' ')
+      return textValues.length > maxLength ? textValues.substring(0, maxLength) + '...' : textValues || 'No text content'
+    }
+    return 'No content'
+  }
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+  }
+
+  // Format time for display
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Calculate duration (placeholder - you might want to add duration field to your API)
+  const getDuration = () => {
+    return "15:30" // Placeholder - you can add duration field to your SOAP note model
+  }
+
+  const handleDeleteNote = async (noteId: string) => {
+    try {
+      await soapApi.deleteNote(noteId)
+      setNotes(notes.filter(note => note.id !== noteId))
+      toast({
+        title: "Success",
+        description: "SOAP note deleted successfully",
+      })
+    } catch (error) {
+      console.error('Failed to delete SOAP note:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete SOAP note. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
+  const handleViewNote = (note: SOAPNote) => {
+    setSelectedNote(note)
+    setIsViewModalOpen(true)
+  }
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast({
+        title: "Copied!",
+        description: "Text copied to clipboard",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to copy text",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const exportToPDF = () => {
+    // TODO: Implement PDF export functionality
+    toast({
+      title: "Export",
+      description: "PDF export functionality coming soon",
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <div>
+        <Header title="SOAP Notes History" description="View and manage all your medical documentation" />
+        <div className="p-6 flex items-center justify-center">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span>Loading SOAP notes...</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -103,7 +216,7 @@ export default function HistoryPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="Search by patient name, ID, or complaint..."
+                    placeholder="Search by summary, transcript, or assessment..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
@@ -117,8 +230,6 @@ export default function HistoryPage() {
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -127,10 +238,10 @@ export default function HistoryPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="Initial Consultation">Initial Consultation</SelectItem>
-                  <SelectItem value="Follow-up">Follow-up</SelectItem>
-                  <SelectItem value="Annual Checkup">Annual Checkup</SelectItem>
-                  <SelectItem value="Urgent Care">Urgent Care</SelectItem>
+                  <SelectItem value="follow-up">Follow-up</SelectItem>
+                  <SelectItem value="initial">Initial Consultation</SelectItem>
+                  <SelectItem value="annual">Annual Checkup</SelectItem>
+                  <SelectItem value="urgent">Urgent Care</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -140,7 +251,7 @@ export default function HistoryPage() {
         {/* Results Summary */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">
-            Showing {filteredNotes.length} of {mockNotes.length} SOAP notes
+            Showing {filteredNotes.length} of {totalNotes} SOAP notes (Page {currentPage} of {totalPages})
           </p>
           <Button variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
@@ -156,36 +267,43 @@ export default function HistoryPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1 space-y-3">
                     <div className="flex items-center gap-3">
-                      <h3 className="text-lg font-semibold text-gray-900">{note.patient}</h3>
-                      <Badge variant="outline" className="text-xs">
-                        {note.patientId}
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {note.user_id}
+                      </h3>
+                      <Badge variant="default" className="text-xs">
+                        completed
                       </Badge>
-                      <Badge variant={note.status === "completed" ? "default" : "secondary"} className="text-xs">
-                        {note.status}
-                      </Badge>
                       <Badge variant="outline" className="text-xs">
-                        {note.type}
+                        {note.soap_data.assessment?.toLowerCase().includes('follow') ? 'Follow-up' : 
+                         note.soap_data.assessment?.toLowerCase().includes('initial') ? 'Initial Consultation' :
+                         note.soap_data.assessment?.toLowerCase().includes('annual') ? 'Annual Checkup' :
+                         note.soap_data.assessment?.toLowerCase().includes('urgent') ? 'Urgent Care' :
+                         'Follow-up'}
                       </Badge>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
-                        {note.date} at {note.time}
+                        {formatDate(note.created_at)} at {formatTime(note.created_at)}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Duration: {note.duration}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Chief Complaint:</span>
-                        {note.chief_complaint}
+                      <div className="flex items-start gap-2">
+                        <span className="font-medium text-gray-700 min-w-fit">Chief Complaint:</span>
+                        <span className="text-gray-600">
+                          {(note.soap_data.subjective as any)?.chief_complaint
+                          || (note.soap_data.subjective as any)?.CC
+                          //  extractText(note.soap_data.subjective, 80) ||
+                          //  'Not specified'
+                           }
+                        </span>
                       </div>
                     </div>
+
+
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => handleViewNote(note)}>
                       <Eye className="mr-2 h-4 w-4" />
                       View
                     </Button>
@@ -200,11 +318,12 @@ export default function HistoryPage() {
                           <Download className="mr-2 h-4 w-4" />
                           Export PDF
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <FileText className="mr-2 h-4 w-4" />
-                          Edit Note
+                        <DropdownMenuItem 
+                          className="text-red-600"
+                          onClick={() => handleDeleteNote(note.id)}
+                        >
+                          Delete
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -213,6 +332,31 @@ export default function HistoryPage() {
             </Card>
           ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-600">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        )}
 
         {filteredNotes.length === 0 && (
           <Card>
@@ -231,6 +375,189 @@ export default function HistoryPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* View SOAP Note Modal */}
+        <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle className="h-6 w-6 text-green-600" />
+                <span>SOAP Note Details</span>
+              </DialogTitle>
+            </DialogHeader>
+
+            {selectedNote && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-end gap-2">
+                  <Button variant="outline" onClick={exportToPDF}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export PDF
+                  </Button>
+                  <Button variant="outline" onClick={() => copyToClipboard(JSON.stringify(selectedNote, null, 2))}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy All
+                  </Button>
+                </div>
+
+                <Tabs defaultValue="soap" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="soap">SOAP Note</TabsTrigger>
+                    <TabsTrigger value="transcript">Transcript</TabsTrigger>
+                    <TabsTrigger value="summary">Summary</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="soap" className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <User className="h-5 w-5 text-blue-600" />
+                            Subjective
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {extractText(selectedNote.soap_data.subjective, 500)}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => copyToClipboard(extractText(selectedNote.soap_data.subjective, 1000))}
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Stethoscope className="h-5 w-5 text-green-600" />
+                            Objective
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {extractText(selectedNote.soap_data.objective, 500)}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => copyToClipboard(extractText(selectedNote.soap_data.objective, 1000))}
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <ClipboardList className="h-5 w-5 text-orange-600" />
+                            Assessment
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {selectedNote.soap_data.assessment}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => copyToClipboard(selectedNote.soap_data.assessment)}
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Target className="h-5 w-5 text-purple-600" />
+                            Plan
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                            {extractText(selectedNote.soap_data.plan, 500)}
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="mt-2" 
+                            onClick={() => copyToClipboard(extractText(selectedNote.soap_data.plan, 1000))}
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="transcript">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Full Transcript</CardTitle>
+                        <CardDescription>Complete conversation with speaker identification</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div className="text-sm text-gray-700 leading-relaxed">
+                            {selectedNote.transcript || 'No transcript available'}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="summary">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Session Summary</CardTitle>
+                        <CardDescription>Key metrics and insights from the consultation</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div className="text-sm text-gray-700 leading-relaxed">
+                            {selectedNote.summary || 'No summary available'}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                            <div className="text-center p-4 bg-blue-50 rounded-lg">
+                              <div className="text-2xl font-bold text-blue-600">
+                                {formatDate(selectedNote.created_at)}
+                              </div>
+                              <div className="text-sm text-gray-600">Created Date</div>
+                            </div>
+                            <div className="text-center p-4 bg-green-50 rounded-lg">
+                              <div className="text-2xl font-bold text-green-600">
+                                {selectedNote.id}
+                              </div>
+                              <div className="text-sm text-gray-600">Note ID</div>
+                            </div>
+                            <div className="text-center p-4 bg-purple-50 rounded-lg">
+                              <div className="text-2xl font-bold text-purple-600">
+                                {selectedNote.user_id}
+                              </div>
+                              <div className="text-sm text-gray-600">User ID</div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )
