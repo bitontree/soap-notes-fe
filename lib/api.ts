@@ -1,5 +1,17 @@
+import axios from 'axios'
+
 // API configuration and service functions
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000' // Adjust this to your backend URL
+
+// Create axios instance with default config
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  withCredentials: true, // For cookie support if needed
+  timeout: 10000, // 10 second timeout
+})
 
 interface ApiResponse<T> {
   success: boolean
@@ -59,40 +71,51 @@ class ApiError extends Error {
   }
 }
 
+// Generic API request function using axios
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+    data?: any
+    params?: any
+    headers?: Record<string, string>
+  } = {}
 ): Promise<ApiResponse<T>> {
-  const url = `${API_BASE_URL}${endpoint}`
-  
-  const config: RequestInit = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    credentials: 'include',
-    ...options,
-  }
+  const { method = 'GET', data, params, headers = {} } = options
 
   try {
-    const response = await fetch(url, config)
-    const data = await response.json()
+    const response = await apiClient.request({
+      url: endpoint,
+      method,
+      data,
+      params,
+      headers,
+    })
 
-    if (!response.ok) {
-      throw new ApiError(response.status, data.detail || data.message || 'API request failed')
-    }
+    console.log('🌐 Response status:', response.status)
+    console.log('🌐 Response data:', response.data)
 
     // Handle both FastAPI direct response and wrapped response formats
     return {
       success: true,
-      data: data.data || data, // Handle both { data: [...] } and direct [...]
-      token: data.access_token,
-      user: data.user
+      data: response.data.data || response.data, // Handle both { data: [...] } and direct [...]
+      token: response.data.access_token,
+      user: response.data.user
     }
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error
+  } catch (error: any) {
+    // Axios v1+ does not have isAxiosError on the default import, so check manually
+    if (error && error.response) {
+      const status = error.response.status || 500
+      const message = error.response.data?.detail ||
+                      error.response.data?.message ||
+                      error.message ||
+                      'API request failed'
+      
+      console.error('❌ API Error:', status, message)
+      throw new ApiError(status, message)
     }
+    
+    console.error('❌ Network Error:', error)
     throw new ApiError(500, 'Network error')
   }
 }
@@ -117,7 +140,7 @@ export const authApi = {
   async login(credentials: LoginData): Promise<{ token: string; user: User }> {
     const response = await apiRequest<{ access_token: string; user: User }>('/login', {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      data: credentials,
     })
 
     return {
@@ -129,7 +152,7 @@ export const authApi = {
   async signup(userData: SignupData): Promise<{ token: string; user: User }> {
     const response = await apiRequest<{ access_token: string; user: User }>('/signup', {
       method: 'POST',
-      body: JSON.stringify(userData),
+      data: userData,
     })
 
     return {
@@ -190,12 +213,13 @@ export const soapApi = {
       throw new Error('User ID not found. Please login again.')
     }
     
-    const params = `?page=${page}&limit=${limit}&user_id=${userId}`
     console.log('🔍 Making SOAP notes request with user_id:', userId)
     
-    const response = await apiRequest<SOAPNotesResponse>(`/soap-notes-history${params}`, {
+    const response = await apiRequest<SOAPNotesResponse>('/soap-notes-history', {
+      params: { page, limit, user_id: userId },
       headers: { 'Content-Type': 'application/json' }, // No auth headers needed
     })
+    
     console.log('📄 SOAP notes response:', response)
     if (!response.success) {
       throw new Error(response.message || 'Failed to fetch SOAP notes')
@@ -212,7 +236,8 @@ export const soapApi = {
       throw new Error('User ID not found. Please login again.')
     }
     
-    const response = await apiRequest<SOAPNote>(`/soap/notes/${noteId}?user_id=${userId}`, {
+    const response = await apiRequest<SOAPNote>(`/soap/notes/${noteId}`, {
+      params: { user_id: userId },
       headers: { 'Content-Type': 'application/json' },
     })
 
@@ -242,7 +267,7 @@ export const soapApi = {
     const response = await apiRequest<{ id: string; note: SOAPNote }>('/soap/notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(noteDataWithUserId),
+      data: noteDataWithUserId,
     })
 
     if (!response.success) {
@@ -260,8 +285,9 @@ export const soapApi = {
       throw new Error('User ID not found. Please login again.')
     }
     
-    const response = await apiRequest(`/soap/notes/${noteId}?user_id=${userId}`, {
+    const response = await apiRequest(`/soap/notes/${noteId}`, {
       method: 'DELETE',
+      params: { user_id: userId },
       headers: { 'Content-Type': 'application/json' },
     })
 
