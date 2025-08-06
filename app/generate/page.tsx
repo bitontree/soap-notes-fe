@@ -117,8 +117,8 @@ export default function GeneratePage() {
     try {
       setIsProcessing(true)
       setProgress(10)
-
-      const response = await axios.post("http://localhost:8000/generate-soap-note", formData, {
+      const baseURL = process.env.NEXT_PUBLIC_BASE_URL
+      const response = await axios.post(`${baseURL}/generate-soap-note`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (event) => {
           if (event.total) {
@@ -129,12 +129,7 @@ export default function GeneratePage() {
       })
 
       const data = response.data.result
-      console.log("Full data received:", data);
-
-      // Try alternative speakers paths
-      console.log("speakers:", data.speakers);
-      console.log("transcript_speakers:", data.transcript_speakers);
-      console.log("diarized:", data.diarized_transcript);
+      
 
       if (data && data.soap_data) {
         setSOAPNote({
@@ -165,7 +160,6 @@ export default function GeneratePage() {
         description: "Failed to generate SOAP note. Please try again.",
         variant: "destructive",
       })
-      console.error("Generate SOAP note error:", error)
     }
   }
 
