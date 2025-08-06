@@ -4,6 +4,7 @@ import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { authApi } from "@/lib/api"
 
 interface User {
   id: string
@@ -27,49 +28,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    const storedUser = localStorage.getItem("user")
-
-    if (token && storedUser) {
+    const initializeAuth = async () => {
       try {
-        const userData = JSON.parse(storedUser)
-        setUser(userData)
+        // Try to get current user from API
+        const currentUser = await authApi.getCurrentUser()
+        if (currentUser) {
+          setUser(currentUser)
+        } else {
+          // Fallback to localStorage for backward compatibility
+          const token = localStorage.getItem("token")
+          const storedUser = localStorage.getItem("user")
+
+          if (token && storedUser) {
+            try {
+              const userData = JSON.parse(storedUser)
+              setUser(userData)
+            } catch (error) {
+              // Clear invalid data
+              localStorage.removeItem("token")
+              localStorage.removeItem("user")
+            }
+          }
+        }
       } catch (error) {
-        // Clear invalid data
+        console.error("Auth initialization error:", error)
+        // Clear any invalid tokens
         localStorage.removeItem("token")
         localStorage.removeItem("user")
+      } finally {
+        setIsLoading(false)
       }
     }
-    setIsLoading(false)
+
+    initializeAuth()
   }, [])
 
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      // Mock API delay
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Mock validation - accept any email/password combination
-      if (email && password) {
-        const mockUser = {
-          id: "user_123",
-          email: email,
-          name: email.includes("dr.")
-            ? `Dr. ${email.split("@")[0].replace("dr.", "").replace(".", " ")}`
-            : `Dr. ${email.split("@")[0]}`,
-        }
-
-        const mockToken = `mock_jwt_token_${Date.now()}`
-        localStorage.setItem("token", mockToken)
-        localStorage.setItem("user", JSON.stringify(mockUser))
-
-        setUser(mockUser)
-        router.push("/dashboard")
-      } else {
-        throw new Error("Email and password are required")
-      }
+      const { token, user: userData } = await authApi.login({ email, password })
+      
+      localStorage.setItem("token", token)
+      localStorage.setItem("user", JSON.stringify(userData))
+      setUser(userData)
+      router.push("/dashboard")
     } catch (error) {
-      throw new Error("Invalid email or password")
+      const message = error instanceof Error ? error.message : "Login failed"
+      throw new Error(message)
     } finally {
       setIsLoading(false)
     }
@@ -78,38 +83,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signup = async (name: string, email: string, password: string) => {
     setIsLoading(true)
     try {
-      // Mock API delay
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-
-      // Mock validation
-      if (name && email && password) {
-        const mockUser = {
-          id: `user_${Date.now()}`,
-          email: email,
-          name: name,
-        }
-
-        const mockToken = `mock_jwt_token_${Date.now()}`
-        localStorage.setItem("token", mockToken)
-        localStorage.setItem("user", JSON.stringify(mockUser))
-
-        setUser(mockUser)
-        router.push("/dashboard")
-      } else {
-        throw new Error("All fields are required")
-      }
+      const { token, user: userData } = await authApi.signup({ name, email, password })
+      
+      localStorage.setItem("token", token)
+      localStorage.setItem("user", JSON.stringify(userData))
+      setUser(userData)
+      router.push("/login")
     } catch (error) {
-      throw new Error("Unable to create account")
+      const message = error instanceof Error ? error.message : "Signup failed"
+      throw new Error(message)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const logout = () => {
-    localStorage.removeItem("token")
-    localStorage.removeItem("user")
-    setUser(null)
-    router.push("/login")
+  const logout = async () => {
+    try {
+      await authApi.logout()
+    } catch (error) {
+      console.warn("Logout API call failed:", error)
+    } finally {
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
+      setUser(null)
+      router.push("/login")
+    }
   }
 
   return <AuthContext.Provider value={{ user, login, signup, logout, isLoading }}>{children}</AuthContext.Provider>

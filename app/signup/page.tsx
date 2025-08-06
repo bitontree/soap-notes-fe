@@ -37,7 +37,7 @@ export default function SignupPage() {
     } catch (error) {
       toast({
         title: "Signup Failed",
-        description: "Unable to create account",
+        description: "Mail already exists",
         variant: "destructive",
       })
     }
@@ -111,29 +111,7 @@ export default function SignupPage() {
             </Button>
           </form>
 
-          {/* Demo Info */}
-          <div className="mt-4 p-3 bg-green-50 rounded-lg">
-            <h4 className="text-sm font-medium text-green-900 mb-2">Demo Mode</h4>
-            <p className="text-xs text-green-700">
-              You can use any name, email, and password combination to create a demo account. No real registration is
-              required.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2 w-full bg-transparent"
-              onClick={() => {
-                setName("Dr. Jane Doe")
-                setEmail("dr.jane@hospital.com")
-                setPassword("demo123")
-                setConfirmPassword("demo123")
-              }}
-            >
-              Fill Demo Data
-            </Button>
-          </div>
-
+          
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Already have an account?{" "}
