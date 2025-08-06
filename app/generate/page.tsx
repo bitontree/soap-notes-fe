@@ -24,6 +24,18 @@ import {
   Target,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import axios from "axios"
+
+interface SpeakerSegment {
+  text: string
+  timestamp: string
+}
+
+interface Speaker {
+  id: string
+  name: string
+  segments: SpeakerSegment[]
+}
 
 interface SOAPNote {
   subjective: string
@@ -31,7 +43,34 @@ interface SOAPNote {
   assessment: string
   plan: string
   transcript: string
-  speakers: Array<{ id: string; name: string; segments: Array<{ text: string; timestamp: string }> }>
+  summary:string
+  speakers: Speaker[]
+  diarized?: string
+}
+
+// Formatting helper functions
+
+function formatSubjective(subjective: Record<string, string>): string {
+  if (!subjective) return ""
+  return Object.values(subjective)
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+function formatObjective(objective: Record<string, string>): string {
+  if (!objective) return ""
+  return Object.values(objective)
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+
+function formatPlan(plan: { recommendations: string[]; follow_up: string }): string {
+  if (!plan) return ""
+  const recs = plan.recommendations
+    ? plan.recommendations.map((r, i) => `${i + 1}. ${r}`).join("\n")
+    : ""
+  return `Recommendations:\n${recs}\n\nFollow-up: ${plan.follow_up || ""}`
 }
 
 export default function GeneratePage() {
@@ -53,15 +92,11 @@ export default function GeneratePage() {
           description: `${audioFile.name} is ready for processing`,
         })
       }
-    },
-    [toast],
+    }, [toast],
   )
-
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      "audio/*": [".mp3", ".wav", ".m4a", ".ogg"],
-    },
+    accept: { "audio/*": [".mp3", ".wav", ".m4a", ".ogg"] },
     maxFiles: 1,
   })
 
@@ -69,82 +104,68 @@ export default function GeneratePage() {
     if (!file || !patientId) {
       toast({
         title: "Missing Information",
-        description: "Please upload an audio file and enter patient ID",
+        description: "Please upload an audio file and enter a patient ID",
         variant: "destructive",
       })
       return
     }
 
-    setIsProcessing(true)
-    setProgress(0)
-
-    // Simulate processing with progress updates
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(progressInterval)
-          return 90
-        }
-        return prev + 10
-      })
-    }, 500)
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("payload", JSON.stringify({ user_id: patientId }))
 
     try {
-      // Mock API call
-      await new Promise((resolve) => setTimeout(resolve, 5000))
+      setIsProcessing(true)
+      setProgress(10)
 
-      // Mock SOAP note response
-      const mockSOAP: SOAPNote = {
-        subjective:
-          "Patient reports persistent headaches for the past 3 days, described as throbbing pain primarily in the frontal region. Pain intensity rated 7/10. Associated with mild nausea but no vomiting. No visual disturbances or photophobia. Patient denies recent trauma or fever.",
-        objective:
-          "Vital signs: BP 128/82, HR 76, Temp 98.6°F, RR 16. Patient appears comfortable but slightly fatigued. HEENT: Pupils equal, round, reactive to light. No papilledema on fundoscopic exam. Neck supple, no meningeal signs. Neurological exam within normal limits.",
-        assessment:
-          "Primary headache, likely tension-type headache. Differential includes migraine without aura, though patient lacks typical migraine features. No signs of secondary headache or neurological complications.",
-        plan: "1. Recommend ibuprofen 400mg q6h PRN for pain relief\n2. Encourage adequate hydration and regular sleep schedule\n3. Stress management techniques and relaxation exercises\n4. Follow-up in 1 week if symptoms persist\n5. Return immediately if severe symptoms develop (fever, neck stiffness, vision changes)",
-        transcript:
-          "Doctor: Good morning, how are you feeling today?\nPatient: Not great, I've been having these terrible headaches for the past three days.\nDoctor: Can you describe the pain for me?\nPatient: It's like a throbbing pain, mostly in the front of my head. I'd say it's about a 7 out of 10 in terms of pain.",
-        speakers: [
-          {
-            id: "speaker_1",
-            name: "Doctor",
-            segments: [
-              { text: "Good morning, how are you feeling today?", timestamp: "00:00:05" },
-              { text: "Can you describe the pain for me?", timestamp: "00:00:15" },
-            ],
-          },
-          {
-            id: "speaker_2",
-            name: "Patient",
-            segments: [
-              {
-                text: "Not great, I've been having these terrible headaches for the past three days.",
-                timestamp: "00:00:08",
-              },
-              {
-                text: "It's like a throbbing pain, mostly in the front of my head. I'd say it's about a 7 out of 10 in terms of pain.",
-                timestamp: "00:00:18",
-              },
-            ],
-          },
-        ],
+      const response = await axios.post("http://localhost:8000/generate-soap-note", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (event) => {
+          if (event.total) {
+            const percent = Math.round((event.loaded * 100) / event.total)
+            setProgress(percent * 0.6)
+          }
+        },
+      })
+
+      const data = response.data.result
+      console.log("Full data received:", data);
+
+      // Try alternative speakers paths
+      console.log("speakers:", data.speakers);
+      console.log("transcript_speakers:", data.transcript_speakers);
+      console.log("diarized:", data.diarized_transcript);
+
+      if (data && data.soap_data) {
+        setSOAPNote({
+          subjective: formatSubjective(data.soap_data.subjective),
+          objective: formatObjective(data.soap_data.objective),
+          assessment: data.soap_data.assessment || "",
+          plan: formatPlan(data.soap_data.plan),
+          transcript: data.transcript || "",
+          summary: data.summary || "",
+          speakers: data.speakers || [],
+          diarized: data.diarized_transcript || "" 
+        })
+        
+      } else {
+        toast({
+          title: "Invalid Response",
+          description: "SOAP data missing from server response.",
+          variant: "destructive",
+        })
       }
 
+      setIsProcessing(false)
       setProgress(100)
-      setSOAPNote(mockSOAP)
-      toast({
-        title: "SOAP Note Generated",
-        description: "Your medical documentation is ready",
-      })
     } catch (error) {
+      setIsProcessing(false)
       toast({
-        title: "Generation Failed",
-        description: "Unable to process audio file",
+        title: "Error",
+        description: "Failed to generate SOAP note. Please try again.",
         variant: "destructive",
       })
-    } finally {
-      setIsProcessing(false)
-      clearInterval(progressInterval)
+      console.error("Generate SOAP note error:", error)
     }
   }
 
@@ -165,10 +186,7 @@ export default function GeneratePage() {
 
   return (
     <div>
-      <Header
-        title="Generate SOAP Note"
-        description="Upload audio recordings to generate structured medical documentation"
-      />
+      <Header title="Generate SOAP Note" description="Upload audio recordings to generate structured medical documentation" />
 
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         {!soapNote ? (
@@ -176,10 +194,7 @@ export default function GeneratePage() {
             {/* Upload Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Upload className="h-5 w-5" />
-                  Audio Upload
-                </CardTitle>
+                <CardTitle className="flex items-center gap-2"><Upload className="h-5 w-5" /> Audio Upload</CardTitle>
                 <CardDescription>Upload your patient consultation recording</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -200,9 +215,7 @@ export default function GeneratePage() {
                   ) : (
                     <div className="space-y-2">
                       <Upload className="h-12 w-12 text-gray-400 mx-auto" />
-                      <p className="text-lg font-medium text-gray-900">
-                        {isDragActive ? "Drop your audio file here" : "Upload audio file"}
-                      </p>
+                      <p className="text-lg font-medium text-gray-900">{isDragActive ? "Drop your audio file here" : "Upload audio file"}</p>
                       <p className="text-sm text-gray-500">Supports MP3, WAV, M4A files up to 100MB</p>
                     </div>
                   )}
@@ -213,31 +226,17 @@ export default function GeneratePage() {
             {/* Patient Information */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Patient Information
-                </CardTitle>
+                <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> Patient Information</CardTitle>
                 <CardDescription>Enter patient details for the SOAP note</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="patientId">Patient ID *</Label>
-                  <Input
-                    id="patientId"
-                    placeholder="Enter patient ID"
-                    value={patientId}
-                    onChange={(e) => setPatientId(e.target.value)}
-                  />
+                  <Input id="patientId" placeholder="Enter patient ID" value={patientId} onChange={(e) => setPatientId(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="notes">Additional Notes (Optional)</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Any additional context or notes..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={4}
-                  />
+                  <Textarea id="notes" placeholder="Any additional context or notes..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
                 </div>
               </CardContent>
             </Card>
@@ -312,13 +311,8 @@ export default function GeneratePage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-sm text-gray-700 leading-relaxed">{soapNote.subjective}</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => copyToClipboard(soapNote.subjective)}
-                      >
+                      <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{soapNote.subjective}</pre>
+                      <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(soapNote.subjective)}>
                         <Copy className="mr-1 h-3 w-3" />
                         Copy
                       </Button>
@@ -333,13 +327,8 @@ export default function GeneratePage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-sm text-gray-700 leading-relaxed">{soapNote.objective}</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => copyToClipboard(soapNote.objective)}
-                      >
+                      <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{soapNote.objective}</pre>
+                      <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(soapNote.objective)}>
                         <Copy className="mr-1 h-3 w-3" />
                         Copy
                       </Button>
@@ -355,12 +344,7 @@ export default function GeneratePage() {
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm text-gray-700 leading-relaxed">{soapNote.assessment}</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => copyToClipboard(soapNote.assessment)}
-                      >
+                      <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(soapNote.assessment)}>
                         <Copy className="mr-1 h-3 w-3" />
                         Copy
                       </Button>
@@ -375,7 +359,7 @@ export default function GeneratePage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{soapNote.plan}</div>
+                      <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{soapNote.plan}</pre>
                       <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(soapNote.plan)}>
                         <Copy className="mr-1 h-3 w-3" />
                         Copy
@@ -386,53 +370,40 @@ export default function GeneratePage() {
               </TabsContent>
 
               <TabsContent value="transcript">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Full Transcript</CardTitle>
-                    <CardDescription>Complete conversation with speaker identification</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {soapNote.speakers.map((speaker) => (
-                        <div key={speaker.id} className="space-y-2">
-                          <h4 className="font-medium text-gray-900">{speaker.name}</h4>
-                          {speaker.segments.map((segment, index) => (
-                            <div key={index} className="flex gap-3 text-sm">
-                              <span className="text-gray-500 font-mono">{segment.timestamp}</span>
-                              <p className="text-gray-700">{segment.text}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+  <Card>
+    <CardHeader>
+      <CardTitle>Diarized Transcript</CardTitle>
+      <CardDescription>Raw diarized transcript text from backend</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <pre className="whitespace-pre-wrap text-gray-700">
+        {soapNote.diarized
+          ? soapNote.diarized
+              .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
+              .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
+          : "No diarized transcript available."}
+      </pre>
+    </CardContent>
+  </Card>
+</TabsContent>
 
-              <TabsContent value="summary">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Session Summary</CardTitle>
-                    <CardDescription>Key metrics and insights from the consultation</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="text-center p-4 bg-blue-50 rounded-lg">
-                        <div className="text-2xl font-bold text-blue-600">5:23</div>
-                        <div className="text-sm text-gray-600">Duration</div>
-                      </div>
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <div className="text-2xl font-bold text-green-600">2</div>
-                        <div className="text-sm text-gray-600">Speakers</div>
-                      </div>
-                      <div className="text-center p-4 bg-purple-50 rounded-lg">
-                        <div className="text-2xl font-bold text-purple-600">98%</div>
-                        <div className="text-sm text-gray-600">Accuracy</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+
+
+
+     <TabsContent value="summary">
+  <Card>
+    <CardHeader>
+      <CardTitle>Session Summary</CardTitle>
+      <CardDescription>Key metrics and insights from the consultation</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="space-y-4">
+        <pre className="whitespace-pre-wrap text-gray-700">{soapNote.summary}</pre>
+      </div>
+    </CardContent>
+  </Card>
+</TabsContent>
+
             </Tabs>
           </div>
         )}
