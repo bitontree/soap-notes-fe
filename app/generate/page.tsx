@@ -117,18 +117,18 @@ export default function GeneratePage() {
     try {
       setIsProcessing(true)
       setProgress(10)
-      const baseURL = process.env.NEXT_PUBLIC_BASE_URL
+      const baseURL = process.env.NEXT_PUBLIC_API_URL
       const response = await axios.post(`${baseURL}/generate-soap-note`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (event) => {
+        onUploadProgress: (event: any) => {
           if (event.total) {
             const percent = Math.round((event.loaded * 100) / event.total)
             setProgress(percent * 0.6)
           }
         },
-      })
+      } as any)
 
-      const data = response.data.result
+      const data = (response.data as any).result
       
 
       if (data && data.soap_data) {

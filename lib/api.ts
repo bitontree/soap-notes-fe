@@ -19,6 +19,7 @@ interface ApiResponse<T> {
   message?: string
   token?: string
   user?: any
+  api_key?: string
 }
 
 interface LoginData {
@@ -95,14 +96,15 @@ async function apiRequest<T>(
     })
 
     console.log('🌐 Response status:', response.status)
-    console.log('🌐 Response data:', response.data)
+    console.log('🌐 Response data:', response)
 
     // Handle both FastAPI direct response and wrapped response formats
     return {
       success: true,
       data: response.data.data || response.data, // Handle both { data: [...] } and direct [...]
       token: response.data.access_token,
-      user: response.data.user
+      user: response.data.user,
+      api_key: response.data.api_key
     }
   } catch (error: any) {
     // Axios v1+ does not have isAxiosError on the default import, so check manually
@@ -139,8 +141,8 @@ export function getSoapAuthHeaders(): Record<string, string> {
 
 // Authentication API functions
 export const authApi = {
-  async login(credentials: LoginData): Promise<{ token: string; user: User }> {
-    const response = await apiRequest<{ access_token: string; user: User }>('/login', {
+  async login(credentials: LoginData): Promise<{ token: string; user: User; api_key?: string }> {
+    const response = await apiRequest<{ access_token: string; user: User; api_key?: string }>('/login', {
       method: 'POST',
       data: credentials,
     })
@@ -148,11 +150,12 @@ export const authApi = {
     return {
       token: response.token!,
       user: response.user!,
+      api_key: response.api_key,
     }
   },
 
-  async signup(userData: SignupData): Promise<{ token: string; user: User }> {
-    const response = await apiRequest<{ access_token: string; user: User }>('/signup', {
+  async signup(userData: SignupData): Promise<{ token: string; user: User; api_key?: string }> {
+    const response = await apiRequest<{ access_token: string; user: User; api_key?: string }>('/signup', {
       method: 'POST',
       data: userData,
     })
@@ -160,6 +163,7 @@ export const authApi = {
     return {
       token: response.token!,
       user: response.user!,
+      api_key: response.api_key,
     }
   },
 

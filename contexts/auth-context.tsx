@@ -67,10 +67,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      const { token, user: userData } = await authApi.login({ email, password })
+      const { token, user: userData, api_key } = await authApi.login({ email, password })
       
       localStorage.setItem("token", token)
       localStorage.setItem("user", JSON.stringify(userData))
+      if (api_key) {
+        localStorage.setItem("api_key", api_key)
+      }
       setUser(userData)
       router.push("/dashboard")
     } catch (error) {
@@ -84,10 +87,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signup = async (firstname: string, lastname: string, email: string, password: string) => {
     setIsLoading(true)
     try {
-      const { token, user: userData } = await authApi.signup({ firstname, lastname, email, password })
+      const { token, user: userData, api_key } = await authApi.signup({ firstname, lastname, email, password })
       
       localStorage.setItem("token", token)
       localStorage.setItem("user", JSON.stringify(userData))
+      if (api_key) {
+        localStorage.setItem("api_key", api_key)
+      }
       setUser(userData)
       router.push("/login")
     } catch (error) {
