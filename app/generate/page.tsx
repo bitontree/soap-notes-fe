@@ -24,7 +24,7 @@ import {
   Target,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import axios from "axios"
+import { generateSoapNote } from "@/lib/api" 
 
 interface SpeakerSegment {
   text: string
@@ -43,13 +43,12 @@ interface SOAPNote {
   assessment: string
   plan: string
   transcript: string
-  summary:string
+  summary: string
   speakers: Speaker[]
   diarized?: string
 }
 
 // Formatting helper functions
-
 function formatSubjective(subjective: Record<string, string>): string {
   if (!subjective) return ""
   return Object.values(subjective)
@@ -63,7 +62,6 @@ function formatObjective(objective: Record<string, string>): string {
     .filter(Boolean)
     .join("\n\n")
 }
-
 
 function formatPlan(plan: { recommendations: string[]; follow_up: string }): string {
   if (!plan) return ""
@@ -92,7 +90,8 @@ export default function GeneratePage() {
           description: `${audioFile.name} is ready for processing`,
         })
       }
-    }, [toast],
+    },
+    [toast]
   )
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -117,19 +116,10 @@ export default function GeneratePage() {
     try {
       setIsProcessing(true)
       setProgress(10)
-      const baseURL = process.env.NEXT_PUBLIC_BASE_URL
-      const response = await axios.post(`${baseURL}/generate-soap-note`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (event) => {
-          if (event.total) {
-            const percent = Math.round((event.loaded * 100) / event.total)
-            setProgress(percent * 0.6)
-          }
-        },
-      })
 
-      const data = response.data.result
-      
+      const data = await generateSoapNote(formData, (percent) => {
+        setProgress(percent * 0.6)
+      })
 
       if (data && data.soap_data) {
         setSOAPNote({
@@ -140,9 +130,8 @@ export default function GeneratePage() {
           transcript: data.transcript || "",
           summary: data.summary || "",
           speakers: data.speakers || [],
-          diarized: data.diarized_transcript || "" 
+          diarized: data.diarized_transcript || "",
         })
-        
       } else {
         toast({
           title: "Invalid Response",
@@ -151,13 +140,13 @@ export default function GeneratePage() {
         })
       }
 
-      setIsProcessing(false)
       setProgress(100)
-    } catch (error) {
+      setIsProcessing(false)
+    } catch (error: any) {
       setIsProcessing(false)
       toast({
         title: "Error",
-        description: "Failed to generate SOAP note. Please try again.",
+        description: error.message || "Failed to generate SOAP note. Please try again.",
         variant: "destructive",
       })
     }
@@ -180,7 +169,10 @@ export default function GeneratePage() {
 
   return (
     <div>
-      <Header title="Generate SOAP Note" description="Upload audio recordings to generate structured medical documentation" />
+      <Header
+        title="Generate SOAP Note"
+        description="Upload audio recordings to generate structured medical documentation"
+      />
 
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         {!soapNote ? (
@@ -188,7 +180,9 @@ export default function GeneratePage() {
             {/* Upload Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Upload className="h-5 w-5" /> Audio Upload</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="h-5 w-5" /> Audio Upload
+                </CardTitle>
                 <CardDescription>Upload your patient consultation recording</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -209,7 +203,9 @@ export default function GeneratePage() {
                   ) : (
                     <div className="space-y-2">
                       <Upload className="h-12 w-12 text-gray-400 mx-auto" />
-                      <p className="text-lg font-medium text-gray-900">{isDragActive ? "Drop your audio file here" : "Upload audio file"}</p>
+                      <p className="text-lg font-medium text-gray-900">
+                        {isDragActive ? "Drop your audio file here" : "Upload audio file"}
+                      </p>
                       <p className="text-sm text-gray-500">Supports MP3, WAV, M4A files up to 100MB</p>
                     </div>
                   )}
@@ -220,17 +216,30 @@ export default function GeneratePage() {
             {/* Patient Information */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> Patient Information</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" /> Patient Information
+                </CardTitle>
                 <CardDescription>Enter patient details for the SOAP note</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="patientId">Patient ID *</Label>
-                  <Input id="patientId" placeholder="Enter patient ID" value={patientId} onChange={(e) => setPatientId(e.target.value)} />
+                  <Input
+                    id="patientId"
+                    placeholder="Enter patient ID"
+                    value={patientId}
+                    onChange={(e) => setPatientId(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="notes">Additional Notes (Optional)</Label>
-                  <Textarea id="notes" placeholder="Any additional context or notes..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
+                  <Textarea
+                    id="notes"
+                    placeholder="Any additional context or notes..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={4}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -305,7 +314,9 @@ export default function GeneratePage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{soapNote.subjective}</pre>
+                      <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                        {soapNote.subjective}
+                      </pre>
                       <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(soapNote.subjective)}>
                         <Copy className="mr-1 h-3 w-3" />
                         Copy
@@ -321,7 +332,9 @@ export default function GeneratePage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{soapNote.objective}</pre>
+                      <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                        {soapNote.objective}
+                      </pre>
                       <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(soapNote.objective)}>
                         <Copy className="mr-1 h-3 w-3" />
                         Copy
@@ -364,40 +377,36 @@ export default function GeneratePage() {
               </TabsContent>
 
               <TabsContent value="transcript">
-  <Card>
-    <CardHeader>
-      <CardTitle>Diarized Transcript</CardTitle>
-      <CardDescription>Raw diarized transcript text from backend</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <pre className="whitespace-pre-wrap text-gray-700">
-        {soapNote.diarized
-          ? soapNote.diarized
-              .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
-              .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
-          : "No diarized transcript available."}
-      </pre>
-    </CardContent>
-  </Card>
-</TabsContent>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Diarized Transcript</CardTitle>
+                    <CardDescription>Raw diarized transcript text from backend</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="whitespace-pre-wrap text-gray-700">
+                      {soapNote.diarized
+                        ? soapNote.diarized
+                            .replace(/\[([^\]]+)\]/g, "$1:") // Replace [Speaker] with Speaker:
+                            .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
+                        : "No diarized transcript available."}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-
-
-
-     <TabsContent value="summary">
-  <Card>
-    <CardHeader>
-      <CardTitle>Session Summary</CardTitle>
-      <CardDescription>Key metrics and insights from the consultation</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-4">
-        <pre className="whitespace-pre-wrap text-gray-700">{soapNote.summary}</pre>
-      </div>
-    </CardContent>
-  </Card>
-</TabsContent>
-
+              <TabsContent value="summary">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Session Summary</CardTitle>
+                    <CardDescription>Key metrics and insights from the consultation</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <pre className="whitespace-pre-wrap text-gray-700">{soapNote.summary}</pre>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
             </Tabs>
           </div>
         )}
