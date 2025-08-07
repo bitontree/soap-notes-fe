@@ -1,7 +1,7 @@
-import axios from 'axios'
+import axios, { AxiosProgressEvent } from 'axios'
 
-// API configuration and service functions
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000' // Adjust this to your backend URL
+// API base URL configuration
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 // Create axios instance with default config
 const apiClient = axios.create({
@@ -9,19 +9,21 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // For cookie support if needed
-  timeout: 10000, // 10 second timeout
+  withCredentials: true, // cookie support if needed
+  timeout: 10000, // 10 seconds timeout 
 })
 
+// Generic API response interface
 interface ApiResponse<T> {
   success: boolean
   data?: T
   message?: string
   token?: string
-  user?: any
   api_key?: string
+  user?: any
 }
 
+// Interfaces
 interface LoginData {
   email: string
   password: string
@@ -54,10 +56,10 @@ interface SOAPNote {
   id: string
   user_id: string
   soap_data: {
-    subjective: any  // Object in your backend
-    objective: any   // Object in your backend
+    subjective: any
+    objective: any
     assessment: string
-    plan: any        // Object in your backend
+    plan: any
   }
   summary: string
   transcript: string
@@ -76,6 +78,7 @@ interface SOAPNotesResponse {
   }
 }
 
+// Custom error class for API errors
 class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
@@ -107,59 +110,66 @@ async function apiRequest<T>(
     console.log('🌐 Response status:', response.status)
     console.log('🌐 Response data:', response)
 
-    // Handle both FastAPI direct response and wrapped response formats
     return {
       success: true,
-      data: response.data.data || response.data, // Handle both { data: [...] } and direct [...]
+      data: response.data.data || response.data, // handle wrapped and direct responses
       token: response.data.access_token,
+      api_key: response.data.api_key,
       user: response.data.user,
-      api_key: response.data.api_key
     }
   } catch (error: any) {
-    // Axios v1+ does not have isAxiosError on the default import, so check manually
     if (error && error.response) {
+      console.error('❌ API Error Data:', error.response.data)
       const status = error.response.status || 500
-      const message = error.response.data?.detail ||
-                      error.response.data?.message ||
-                      error.message ||
-                      'API request failed'
-      
-      console.error('❌ API Error:', status, message)
+      const message =
+        error.response.data?.detail ||
+        error.response.data?.message ||
+        error.message ||
+        'API request failed'
+
       throw new ApiError(status, message)
     }
-    
+
     console.error('❌ Network Error:', error)
     throw new ApiError(500, 'Network error')
   }
 }
 
-// Helper function to get auth headers for authenticated requests
+// Helper to get access token auth headers
 export function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('token')
-  console.log('🔑 Token from localStorage:', token ? 'Present' : 'Missing')
+  console.log('🔑 Access Token from localStorage:', token ? 'Present' : 'Missing')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-// Helper function for SOAP notes that expects raw token
-export function getSoapAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token')
-  console.log('🔑 SOAP Token from localStorage:', token ? 'Present' : 'Missing')
-  console.log('🔑 Full token:', token)
-  return token ? { Authorization: `Bearer ${token}` } : {}  // Send Bearer format
+// Helper to get API key auth headers
+export function getApiKeyAuthHeaders(): Record<string, string> {
+  const apiKey = localStorage.getItem('api_key')
+  console.log('🔑 API Key from localStorage:', apiKey ? 'Present' : 'Missing')
+  return apiKey ? { 'x-api-key': apiKey } : {}
 }
 
 // Authentication API functions
 export const authApi = {
-  async login(credentials: LoginData): Promise<{ token: string; user: User; api_key?: string }> {
-    const response = await apiRequest<{ access_token: string; user: User; api_key?: string }>('/login', {
+  async login(credentials: LoginData): Promise<{ token: string; api_key: string; user: User }> {
+    const response = await apiRequest<{ access_token: string; api_key: string; user: User }>('/login', {
       method: 'POST',
       data: credentials,
     })
 
+    if (!response.token || !response.api_key) {
+      throw new Error('Login response missing tokens.')
+    }
+
+    // Save both tokens locally
+    localStorage.setItem('token', response.token)
+    localStorage.setItem('api_key', response.api_key)
+    localStorage.setItem('user', JSON.stringify(response.user))
+
     return {
-      token: response.token!,
-      user: response.user!,
+      token: response.token,
       api_key: response.api_key,
+      user: response.user!,
     }
   },
 
@@ -168,6 +178,9 @@ export const authApi = {
       method: 'POST',
       data: userData,
     })
+
+    localStorage.setItem('token', response.token!)
+    localStorage.setItem('user', JSON.stringify(response.user))
 
     return {
       token: response.token!,
@@ -188,19 +201,22 @@ export const authApi = {
         },
       })
     } catch (error) {
-      // Even if logout fails on server, we should still clear local storage
       console.warn('Logout API call failed:', error)
+    } finally {
+      localStorage.removeItem('token')
+      localStorage.removeItem('api_key')
+      localStorage.removeItem('user')
     }
   },
 
   async getCurrentUser(): Promise<User | null> {
-    const token = localStorage.getItem('token')
-    if (!token) return null
+    const apiKey = localStorage.getItem('api_key')
+    if (!apiKey) return null
 
     try {
       const response = await apiRequest<User>('/me', {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${apiKey}`,
         },
       })
 
@@ -210,8 +226,9 @@ export const authApi = {
 
       return response.data || null
     } catch (error) {
-      // If token is invalid, clear it
+      // If token is invalid, clear storage
       localStorage.removeItem('token')
+      localStorage.removeItem('api_key')
       localStorage.removeItem('user')
       return null
     }
@@ -244,24 +261,84 @@ export const authApi = {
   },
 }
 
-// SOAP Notes API functions
+// Interface for /generate-soap-note response result
+export interface GenerateSoapNoteResponse {
+  soap_data: {
+    subjective: Record<string, any>
+    objective: Record<string, any>
+    assessment: string
+    plan: any
+  }
+  transcript?: string
+  summary?: string
+  speakers?: any[]
+  diarized_transcript?: string
+}
+
+// Updated generateSoapNote function sends access token & api key headers
+export async function generateSoapNote(
+  formData: FormData,
+  onUploadProgress?: (percent: number) => void
+): Promise<GenerateSoapNoteResponse> {
+  const authHeaders = getAuthHeaders()
+  const apiKeyHeaders = getApiKeyAuthHeaders()
+
+  if (!authHeaders.Authorization || !apiKeyHeaders['x-api-key']) {
+    throw new Error('Missing access token or API key. Please login again.')
+  }
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/generate-soap-note`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...authHeaders,
+        ...apiKeyHeaders,
+      },
+      onUploadProgress: (progressEvent: AxiosProgressEvent) => {
+        if (progressEvent.total && onUploadProgress) {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onUploadProgress(percentCompleted)
+        }
+      },
+      timeout: 60000, // 60 seconds
+    })
+
+    if (response.data && response.data.result) {
+      return response.data.result as GenerateSoapNoteResponse
+    }
+
+    throw new Error('Invalid response from server: missing result')
+  } catch (error: any) {
+    console.error('Error in generateSoapNote:', error)
+    throw new Error(error.response?.data?.message || error.message || 'Failed to generate SOAP note')
+  }
+}
+
+// SOAP Notes API functions, using both tokens where needed
 export const soapApi = {
   async getNotes(page: number = 1, limit: number = 10): Promise<SOAPNotesResponse> {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
     const userId = user.id || user._id
-    
+
     if (!userId) {
       throw new Error('User ID not found. Please login again.')
     }
-    
+
     console.log('🔍 Making SOAP notes request with user_id:', userId)
-    
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    }
+
     const response = await apiRequest<SOAPNotesResponse>('/soap-notes-history', {
       params: { page, limit, user_id: userId },
-      headers: { 'Content-Type': 'application/json' }, // No auth headers needed
+      headers,
     })
-    
+
     console.log('📄 SOAP notes response:', response)
+
     if (!response.success) {
       throw new Error(response.message || 'Failed to fetch SOAP notes')
     }
@@ -272,14 +349,20 @@ export const soapApi = {
   async getNoteById(noteId: string): Promise<SOAPNote> {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
     const userId = user.id || user._id
-    
+
     if (!userId) {
       throw new Error('User ID not found. Please login again.')
     }
-    
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    }
+
     const response = await apiRequest<SOAPNote>(`/soap/notes/${noteId}`, {
       params: { user_id: userId },
-      headers: { 'Content-Type': 'application/json' },
+      headers,
     })
 
     if (!response.success) {
@@ -298,16 +381,22 @@ export const soapApi = {
   }): Promise<{ id: string; note: SOAPNote }> {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
     const userId = user.id || user._id
-    
+
     if (!userId) {
       throw new Error('User ID not found. Please login again.')
     }
-    
+
     const noteDataWithUserId = { ...noteData, user_id: userId }
-    
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    }
+
     const response = await apiRequest<{ id: string; note: SOAPNote }>('/soap/notes', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       data: noteDataWithUserId,
     })
 
@@ -321,19 +410,25 @@ export const soapApi = {
   async deleteNote(noteId: string): Promise<void> {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
     const userId = user.id || user._id
-    
+
     if (!userId) {
       throw new Error('User ID not found. Please login again.')
     }
-    
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    }
+
     const response = await apiRequest(`/soap/notes/${noteId}`, {
       method: 'DELETE',
       params: { user_id: userId },
-      headers: { 'Content-Type': 'application/json' },
+      headers,
     })
 
     if (!response.success) {
       throw new Error(response.message || 'Failed to delete SOAP note')
     }
   },
-} 
+}
