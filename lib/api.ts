@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios,{ AxiosProgressEvent } from 'axios'
 
 // API configuration and service functions
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000' // Adjust this to your backend URL
@@ -203,6 +203,50 @@ export const authApi = {
   },
 }
 
+
+// Interface for the /generate-soap-note response result
+export interface GenerateSoapNoteResponse {
+  soap_data: {
+    subjective: Record<string, any>
+    objective: Record<string, any>
+    assessment: string
+    plan: any
+  }
+  transcript?: string
+  summary?: string
+  speakers?: any[]
+  diarized_transcript?: string
+}
+
+
+export async function generateSoapNote(
+  formData: FormData,
+  onUploadProgress?: (percent: number) => void
+): Promise<GenerateSoapNoteResponse> {
+  const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  try {
+    const response = await axios.post(`${baseURL}/generate-soap-note`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent: AxiosProgressEvent) => {
+        if (progressEvent.total && onUploadProgress) {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onUploadProgress(percentCompleted)
+        }
+      },
+      timeout: 60000, // adjust as needed for processing duration
+    })
+
+    if (response.data && response.data.result) {
+      return response.data.result as GenerateSoapNoteResponse
+    }
+
+    throw new Error('Invalid response from server: missing result')
+  } catch (error: any) {
+    console.error('Error in generateSoapNote:', error)
+    throw new Error(error.response?.data?.message || error.message || 'Failed to generate SOAP note')
+  }
+}
+
 // SOAP Notes API functions
 export const soapApi = {
   async getNotes(page: number = 1, limit: number = 10): Promise<SOAPNotesResponse> {
@@ -276,6 +320,9 @@ export const soapApi = {
 
     return response.data!
   },
+
+
+
 
   async deleteNote(noteId: string): Promise<void> {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
