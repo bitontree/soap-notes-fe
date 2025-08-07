@@ -51,10 +51,10 @@ export function Sidebar() {
       <div className="border-t border-gray-200 p-4">
         <div className="flex items-center gap-3 mb-4">
           <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
-            <span className="text-sm font-medium text-blue-600">{user?.name?.charAt(0) || "U"}</span>
+            <span className="text-sm font-medium text-blue-600">{user?.firstname?.charAt(0) || "U"}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{user?.name || "User"}</p>
+            <p className="text-sm font-medium text-gray-900 truncate">{user?.firstname && user?.lastname ? `${user.firstname} ${user.lastname}` : "User"}</p>
             <p className="text-xs text-gray-500 truncate">{user?.email || "user@example.com"}</p>
           </div>
         </div>

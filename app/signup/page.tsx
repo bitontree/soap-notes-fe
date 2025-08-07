@@ -13,7 +13,8 @@ import { Stethoscope, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export default function SignupPage() {
-  const [name, setName] = useState("")
+  const [firstname, setFirstname] = useState("")
+  const [lastname, setLastname] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -33,7 +34,7 @@ export default function SignupPage() {
     }
 
     try {
-      await signup(name, email, password)
+      await signup(firstname, lastname, email, password)
     } catch (error) {
       toast({
         title: "Signup Failed",
@@ -57,16 +58,29 @@ export default function SignupPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
-                type="text"
-                placeholder="Dr. John Smith"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstname">First Name</Label>
+                <Input
+                  id="firstname"
+                  type="text"
+                  placeholder="John"
+                  value={firstname}
+                  onChange={(e) => setFirstname(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastname">Last Name</Label>
+                <Input
+                  id="lastname"
+                  type="text"
+                  placeholder="Smith"
+                  value={lastname}
+                  onChange={(e) => setLastname(e.target.value)}
+                  required
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

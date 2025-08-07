@@ -27,7 +27,8 @@ interface LoginData {
 }
 
 interface SignupData {
-  name: string
+  firstname: string
+  lastname: string
   email: string
   password: string
 }
@@ -35,7 +36,8 @@ interface SignupData {
 interface User {
   id: string
   email: string
-  name: string
+  firstname: string
+  lastname: string
 }
 
 interface SOAPNote {

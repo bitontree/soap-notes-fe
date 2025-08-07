@@ -9,13 +9,14 @@ import { authApi } from "@/lib/api"
 interface User {
   id: string
   email: string
-  name: string
+  firstname: string
+  lastname: string
 }
 
 interface AuthContextType {
   user: User | null
   login: (email: string, password: string) => Promise<void>
-  signup: (name: string, email: string, password: string) => Promise<void>
+  signup: (firstname: string, lastname: string, email: string, password: string) => Promise<void>
   logout: () => void
   isLoading: boolean
 }
@@ -80,10 +81,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const signup = async (name: string, email: string, password: string) => {
+  const signup = async (firstname: string, lastname: string, email: string, password: string) => {
     setIsLoading(true)
     try {
-      const { token, user: userData } = await authApi.signup({ name, email, password })
+      const { token, user: userData } = await authApi.signup({ firstname, lastname, email, password })
       
       localStorage.setItem("token", token)
       localStorage.setItem("user", JSON.stringify(userData))
