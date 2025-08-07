@@ -27,6 +27,15 @@ interface LoginData {
   password: string
 }
 
+interface ForgotPasswordData {
+  email: string
+}
+
+interface ResetPasswordData {
+  token: string
+  new_password: string
+}
+
 interface SignupData {
   firstname: string
   lastname: string
@@ -206,6 +215,32 @@ export const authApi = {
       localStorage.removeItem('user')
       return null
     }
+  },
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const response = await apiRequest<{ message: string }>('/forgot-password', {
+      method: 'POST',
+      data: { email },
+    })
+
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to send reset email')
+    }
+
+    return { message: response.message || 'Reset email sent' }
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    const response = await apiRequest<{ message: string }>('/reset-password', {
+      method: 'POST',
+      data: { token, new_password: newPassword },
+    })
+
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to reset password')
+    }
+
+    return { message: response.message || 'Password reset successfully' }
   },
 }
 

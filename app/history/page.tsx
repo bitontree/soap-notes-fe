@@ -509,11 +509,13 @@ export default function HistoryPage() {
                         <CardDescription>Complete conversation with speaker identification</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <div className="space-y-4">
-                          <div className="text-sm text-gray-700 leading-relaxed">
-                            {selectedNote.transcript || 'No transcript available'}
-                          </div>
-                        </div>
+                      <pre className="whitespace-pre-wrap text-gray-700">
+        {selectedNote.diarized_transcript
+          ? selectedNote.diarized_transcript
+              .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
+              .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
+          : "No diarized transcript available."}
+      </pre>
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -529,7 +531,7 @@ export default function HistoryPage() {
                           <div className="text-sm text-gray-700 leading-relaxed">
                             {selectedNote.summary || 'No summary available'}
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                          {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                             <div className="text-center p-4 bg-blue-50 rounded-lg">
                               <div className="text-2xl font-bold text-blue-600">
                                 {formatDate(selectedNote.created_at)}
@@ -548,7 +550,7 @@ export default function HistoryPage() {
                               </div>
                               <div className="text-sm text-gray-600">User ID</div>
                             </div>
-                          </div>
+                          </div> */}
                         </div>
                       </CardContent>
                     </Card>

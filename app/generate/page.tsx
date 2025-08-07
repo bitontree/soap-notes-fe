@@ -45,7 +45,7 @@ interface SOAPNote {
   transcript: string
   summary:string
   speakers: Speaker[]
-  diarized?: string
+  diarized_transcript?: string
 }
 
 // Formatting helper functions
@@ -118,8 +118,9 @@ export default function GeneratePage() {
       setIsProcessing(true)
       setProgress(10)
       const baseURL = process.env.NEXT_PUBLIC_API_URL
+      const token = localStorage.getItem('api_key')
       const response = await axios.post(`${baseURL}/generate-soap-note`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: { "Content-Type": "multipart/form-data", "Authorization": `Bearer ${token}` },
         onUploadProgress: (event: any) => {
           if (event.total) {
             const percent = Math.round((event.loaded * 100) / event.total)
@@ -140,7 +141,7 @@ export default function GeneratePage() {
           transcript: data.transcript || "",
           summary: data.summary || "",
           speakers: data.speakers || [],
-          diarized: data.diarized_transcript || "" 
+          diarized_transcript: data.diarized_transcript || "" 
         })
         
       } else {
@@ -371,8 +372,8 @@ export default function GeneratePage() {
     </CardHeader>
     <CardContent>
       <pre className="whitespace-pre-wrap text-gray-700">
-        {soapNote.diarized
-          ? soapNote.diarized
+        {soapNote.diarized_transcript
+          ? soapNote.diarized_transcript
               .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
               .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
           : "No diarized transcript available."}
