@@ -38,6 +38,28 @@ interface ResetPasswordData {
   new_password: string
 }
 
+interface Patient {
+  id: string
+  name: string
+  age: number
+  gender: string
+  dob: string
+  email?: string
+  phone?: string
+  address?: string
+  created_at: string
+}
+
+interface CreatePatientData {
+  name: string
+  age: number
+  gender: string
+  dob: string
+  email?: string
+  phone?: string
+  address?: string
+}
+
 interface SignupData {
   firstname: string
   lastname: string
@@ -258,6 +280,52 @@ export const authApi = {
     }
 
     return { message: response.message || 'Password reset successfully' }
+  },
+
+  async getPatients(): Promise<Patient[]> {
+    const response = await apiRequest<Patient[]>('/patients', {
+      headers: getAuthHeaders(),
+    })
+
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to fetch patients')
+    }
+
+    return response.data || []
+  },
+
+  async createPatient(patientData: CreatePatientData): Promise<Patient> {
+    const response = await apiRequest<Patient>('/patients', {
+      method: 'POST',
+      data: patientData,
+      headers: getAuthHeaders(),
+    })
+
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to create patient')
+    }
+
+    return response.data!
+  },
+
+  async generateSoapNote(formData: FormData, onProgress?: (percent: number) => void): Promise<any> {
+    const token = localStorage.getItem('token')
+    const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    
+    const response = await axios.post(`${baseURL}/generate-soap-note`, formData, {
+      headers: { 
+        "Content-Type": "multipart/form-data",
+        "Authorization": `Bearer ${token}`
+      },
+      onUploadProgress: (event: any) => {
+        if (event.total && onProgress) {
+          const percent = Math.round((event.loaded * 100) / event.total)
+          onProgress(percent)
+        }
+      },
+    } as any)
+
+    return (response.data as any).result
   },
 }
 

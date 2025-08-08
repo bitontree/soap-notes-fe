@@ -24,7 +24,8 @@ import {
   Target,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { generateSoapNote } from "@/lib/api" 
+import { authApi } from "@/lib/api"
+import PatientSelector from "@/components/patient-selector" 
 
 interface SpeakerSegment {
   text: string
@@ -35,6 +36,18 @@ interface Speaker {
   id: string
   name: string
   segments: SpeakerSegment[]
+}
+
+interface Patient {
+  id: string
+  name: string
+  age: number
+  gender: string
+  dob: string
+  email?: string
+  phone?: string
+  address?: string
+  created_at: string
 }
 
 interface SOAPNote {
@@ -73,7 +86,7 @@ function formatPlan(plan: { recommendations: string[]; follow_up: string }): str
 
 export default function GeneratePage() {
   const [file, setFile] = useState<File | null>(null)
-  const [patientId, setPatientId] = useState("")
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [notes, setNotes] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -100,10 +113,10 @@ export default function GeneratePage() {
   })
 
   const handleGenerate = async () => {
-    if (!file || !patientId) {
+    if (!file || !selectedPatient) {
       toast({
         title: "Missing Information",
-        description: "Please upload an audio file and enter a patient ID",
+        description: "Please upload an audio file and select a patient",
         variant: "destructive",
       })
       return
@@ -111,13 +124,18 @@ export default function GeneratePage() {
 
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("payload", JSON.stringify({ user_id: patientId }))
+    formData.append("payload", JSON.stringify({ 
+      user_id: selectedPatient.id,
+      patient_name: selectedPatient.name,
+      patient_age: selectedPatient.age,
+      patient_gender: selectedPatient.gender
+    }))
 
     try {
       setIsProcessing(true)
       setProgress(10)
 
-      const data = await generateSoapNote(formData, (percent) => {
+      const data = await authApi.generateSoapNote(formData, (percent: number) => {
         setProgress(percent * 0.6)
       })
 
@@ -214,25 +232,22 @@ export default function GeneratePage() {
             </Card>
 
             {/* Patient Information */}
+            <PatientSelector
+              selectedPatient={selectedPatient}
+              onPatientSelect={setSelectedPatient}
+            />
+
+            {/* Additional Notes */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" /> Patient Information
+                  <ClipboardList className="h-5 w-5" /> Additional Notes
                 </CardTitle>
-                <CardDescription>Enter patient details for the SOAP note</CardDescription>
+                <CardDescription>Any additional context or notes for the SOAP note</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent>
                 <div className="space-y-2">
-                  <Label htmlFor="patientId">Patient ID *</Label>
-                  <Input
-                    id="patientId"
-                    placeholder="Enter patient ID"
-                    value={patientId}
-                    onChange={(e) => setPatientId(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Additional Notes (Optional)</Label>
+                  <Label htmlFor="notes">Notes (Optional)</Label>
                   <Textarea
                     id="notes"
                     placeholder="Any additional context or notes..."
@@ -270,7 +285,7 @@ export default function GeneratePage() {
         {/* Generate Button */}
         {!soapNote && !isProcessing && (
           <div className="flex justify-center">
-            <Button onClick={handleGenerate} size="lg" className="px-8" disabled={!file || !patientId}>
+            <Button onClick={handleGenerate} size="lg" className="px-8" disabled={!file || !selectedPatient}>
               <FileAudio className="mr-2 h-5 w-5" />
               Generate SOAP Note
             </Button>
