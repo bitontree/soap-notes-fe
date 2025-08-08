@@ -5,13 +5,24 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
-import { LayoutDashboard, FileText, History, Database, Settings, LogOut, Stethoscope } from "lucide-react"
+import {
+  LayoutDashboard,
+  FileText,
+  History,
+  Database,
+  Settings,
+  LogOut,
+  Stethoscope,
+  Upload,      
+} from "lucide-react"
 
+// Add your new navigation item here:
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Generate SOAP", href: "/generate", icon: FileText },
   { name: "History", href: "/history", icon: History },
   { name: "EHR Integration", href: "/ehr", icon: Database },
+  { name: "Upload Health Report", href: "/health-report", icon: Upload }, 
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 

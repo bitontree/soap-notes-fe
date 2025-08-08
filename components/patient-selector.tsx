@@ -46,7 +46,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
     dob: "",
     email: "",
     phone: "",
-    address: ""
+    address: "",
   })
 
   useEffect(() => {
@@ -58,8 +58,8 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
     try {
       const patientsData = await authApi.getPatients()
       setPatients(patientsData)
-    } catch (error: any) {  
-      console.error('Failed to load patients:', error)
+    } catch (error: any) {
+      console.error("Failed to load patients:", error)
       toast({
         title: "Error",
         description: error.message || "Failed to load patients",
@@ -83,15 +83,15 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
         dob: newPatient.dob,
         email: newPatient.email || undefined,
         phone: newPatient.phone || undefined,
-        address: newPatient.address || undefined
+        address: newPatient.address || undefined,
       }
 
       const createdPatient = await authApi.createPatient(patientData)
-      
+
       setPatients([...patients, createdPatient])
       onPatientSelect(createdPatient)
       setActiveTab("select")
-      
+
       // Reset form
       setNewPatient({
         firstname: "",
@@ -101,7 +101,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
         dob: "",
         email: "",
         phone: "",
-        address: ""
+        address: "",
       })
 
       toast({
@@ -109,7 +109,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
         description: `${createdPatient.firstname} ${createdPatient.lastname} has been added successfully`,
       })
     } catch (error: any) {
-      console.error('Failed to create patient:', error)
+      console.error("Failed to create patient:", error)
       toast({
         title: "Error",
         description: error.message || "Failed to create patient",
@@ -118,23 +118,6 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
     } finally {
       setIsCreating(false)
     }
-  }
-
-  const formatPatientDisplay = (patient: Patient) => {
-    return `${patient.firstname} ${patient.lastname} (${patient.age} years, ${patient.gender})`
-  }
-
-  const calculateAge = (dob: string) => {
-    const birthDate = new Date(dob)
-    const today = new Date()
-    let age = today.getFullYear() - birthDate.getFullYear()
-    const monthDiff = today.getMonth() - birthDate.getMonth()
-    
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--
-    }
-    
-    return age
   }
 
   return (
@@ -165,7 +148,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                   <Select
                     value={selectedPatient?.id || ""}
                     onValueChange={(value) => {
-                      const patient = patients.find(p => p.id === value)
+                      const patient = patients.find((p) => p.id === value)
                       onPatientSelect(patient || null)
                     }}
                   >
@@ -175,10 +158,12 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                     <SelectContent>
                       {patients.map((patient) => (
                         <SelectItem key={patient.id} value={patient.id}>
-                          <div className="flex items-center justify-between w-full">
-                            <span>{patient.firstname} {patient.lastname}</span>
+                          <div className="flex justify-between w-full">
+                        <span>
+                              {patient.firstname} {patient.lastname} - {patient.age} yrs - {new Date(patient.dob).toLocaleDateString()}
+                            </span>
                             <Badge variant="secondary" className="ml-2">
-                              {patient.age} years, {patient.gender}
+                              {patient.gender}
                             </Badge>
                           </div>
                         </SelectItem>
@@ -191,12 +176,22 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <h4 className="font-medium text-blue-900 mb-2">Selected Patient</h4>
                     <div className="space-y-1 text-sm text-blue-800">
-                      <p><strong>Name:</strong> {selectedPatient.firstname} {selectedPatient.lastname}</p>
-                      <p><strong>Age:</strong> {selectedPatient.age} years</p>
-                      <p><strong>Gender:</strong> {selectedPatient.gender}</p>
-                      <p><strong>DOB:</strong> {new Date(selectedPatient.dob).toLocaleDateString()}</p>
+                      <p>
+                        <strong>Name:</strong> {selectedPatient.firstname} {selectedPatient.lastname}
+                      </p>
+                      <p>
+                        <strong>Age:</strong> {selectedPatient.age} years
+                      </p>
+                      <p>
+                        <strong>Gender:</strong> {selectedPatient.gender}
+                      </p>
+                      <p>
+                        <strong>DOB:</strong> {new Date(selectedPatient.dob).toLocaleDateString()}
+                      </p>
                       {selectedPatient.email && (
-                        <p><strong>Email:</strong> {selectedPatient.email}</p>
+                        <p>
+                          <strong>Email:</strong> {selectedPatient.email}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -341,4 +336,4 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
       </CardContent>
     </Card>
   )
-} 
+}
