@@ -1,4 +1,4 @@
-import axios, { AxiosProgressEvent } from 'axios'
+import axios from 'axios'
 
 // API base URL configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -40,7 +40,8 @@ interface ResetPasswordData {
 
 interface Patient {
   id: string
-  name: string
+  firstname: string
+  lastname: string
   age: number
   gender: string
   dob: string
@@ -51,7 +52,8 @@ interface Patient {
 }
 
 interface CreatePatientData {
-  name: string
+  firstname: string
+  lastname: string
   age: number
   gender: string
   dob: string
@@ -120,6 +122,10 @@ async function apiRequest<T>(
 ): Promise<ApiResponse<T>> {
   const { method = 'GET', data, params, headers = {} } = options
 
+  console.log(`🌐 Making ${method} request to: ${API_BASE_URL}${endpoint}`)
+  console.log('🌐 Request data:', data)
+  console.log('🌐 Request headers:', headers)
+
   try {
     const response = await apiClient.request({
       url: endpoint,
@@ -130,7 +136,7 @@ async function apiRequest<T>(
     })
 
     console.log('🌐 Response status:', response.status)
-    console.log('🌐 Response data:', response)
+    console.log('🌐 Response data:', response.data)
 
     return {
       success: true,
@@ -140,6 +146,16 @@ async function apiRequest<T>(
       user: response.data.user,
     }
   } catch (error: any) {
+    console.error('❌ API Request failed:', {
+      endpoint,
+      method,
+      baseURL: API_BASE_URL,
+      error: error.message,
+      code: error.code,
+      status: error.response?.status,
+      data: error.response?.data
+    })
+
     if (error && error.response) {
       console.error('❌ API Error Data:', error.response.data)
       const status = error.response.status || 500
@@ -152,8 +168,17 @@ async function apiRequest<T>(
       throw new ApiError(status, message)
     }
 
+    // Handle timeout and connection errors more specifically
+    if (error.code === 'ECONNABORTED') {
+      throw new ApiError(408, `Request timeout - server at ${API_BASE_URL} is not responding. Please check if the backend server is running.`)
+    }
+
+    if (error.code === 'ERR_NETWORK') {
+      throw new ApiError(503, `Cannot connect to server at ${API_BASE_URL}. Please check if the backend server is running.`)
+    }
+
     console.error('❌ Network Error:', error)
-    throw new ApiError(500, 'Network error')
+    throw new ApiError(500, `Network error: ${error.message}`)
   }
 }
 
@@ -161,7 +186,7 @@ async function apiRequest<T>(
 export function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('token')
   console.log('🔑 Access Token from localStorage:', token ? 'Present' : 'Missing')
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  return token ? { authorization: `Bearer ${token}` } : {}
 }
 
 // Helper to get API key auth headers
@@ -219,7 +244,7 @@ export const authApi = {
       await apiRequest('/logout', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          authorization: `Bearer ${token}`,
         },
       })
     } catch (error) {
@@ -232,13 +257,13 @@ export const authApi = {
   },
 
   async getCurrentUser(): Promise<User | null> {
-    const apiKey = localStorage.getItem('api_key')
-    if (!apiKey) return null
+    const token = localStorage.getItem('token')
+    if (!token) return null
 
     try {
       const response = await apiRequest<User>('/me', {
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          authorization: `Bearer ${token}`,
         },
       })
 
@@ -306,27 +331,7 @@ export const authApi = {
     }
 
     return response.data!
-  },
-
-  async generateSoapNote(formData: FormData, onProgress?: (percent: number) => void): Promise<any> {
-    const token = localStorage.getItem('token')
-    const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-    
-    const response = await axios.post(`${baseURL}/generate-soap-note`, formData, {
-      headers: { 
-        "Content-Type": "multipart/form-data",
-        "Authorization": `Bearer ${token}`
-      },
-      onUploadProgress: (event: any) => {
-        if (event.total && onProgress) {
-          const percent = Math.round((event.loaded * 100) / event.total)
-          onProgress(percent)
-        }
-      },
-    } as any)
-
-    return (response.data as any).result
-  },
+  }
 }
 
 // Interface for /generate-soap-note response result
@@ -337,50 +342,15 @@ export interface GenerateSoapNoteResponse {
     assessment: string
     plan: any
   }
+  user_id: string
+  patient_id: string
   transcript?: string
   summary?: string
   speakers?: any[]
   diarized_transcript?: string
 }
 
-// Updated generateSoapNote function sends access token & api key headers
-export async function generateSoapNote(
-  formData: FormData,
-  onUploadProgress?: (percent: number) => void
-): Promise<GenerateSoapNoteResponse> {
-  const authHeaders = getAuthHeaders()
-  const apiKeyHeaders = getApiKeyAuthHeaders()
 
-  if (!authHeaders.Authorization || !apiKeyHeaders['x-api-key']) {
-    throw new Error('Missing access token or API key. Please login again.')
-  }
-
-  try {
-    const response = await axios.post(`${API_BASE_URL}/generate-soap-note`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        ...authHeaders,
-        ...apiKeyHeaders,
-      },
-      onUploadProgress: (progressEvent: AxiosProgressEvent) => {
-        if (progressEvent.total && onUploadProgress) {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          onUploadProgress(percentCompleted)
-        }
-      },
-      timeout: 60000, // 60 seconds
-    })
-
-    if (response.data && response.data.result) {
-      return response.data.result as GenerateSoapNoteResponse
-    }
-
-    throw new Error('Invalid response from server: missing result')
-  } catch (error: any) {
-    console.error('Error in generateSoapNote:', error)
-    throw new Error(error.response?.data?.message || error.message || 'Failed to generate SOAP note')
-  }
-}
 
 // SOAP Notes API functions, using both tokens where needed
 export const soapApi = {
@@ -497,6 +467,45 @@ export const soapApi = {
 
     if (!response.success) {
       throw new Error(response.message || 'Failed to delete SOAP note')
+    }
+  },
+
+  async generateSoapNote(
+    formData: FormData,
+    onUploadProgress?: (percent: number) => void
+  ): Promise<GenerateSoapNoteResponse> {
+    const authHeaders = getAuthHeaders()
+    const apiKeyHeaders = getApiKeyAuthHeaders()
+
+    if (!authHeaders.authorization || !apiKeyHeaders['x-api-key']) {
+      throw new Error('Missing access token or API key. Please login again.')
+    }
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/generate-soap-note`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...authHeaders,
+          ...apiKeyHeaders,
+        },
+        onUploadProgress: (progressEvent: any) => {
+          if (progressEvent.total && onUploadProgress) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            onUploadProgress(percentCompleted)
+          }
+        },
+        timeout: 60000, // 60 seconds
+      } as any)
+
+      // Defensive: check that response.data is an object and has a 'result' property
+      if (response.data && typeof response.data === 'object' && 'result' in response.data) {
+        return (response.data as { result: GenerateSoapNoteResponse }).result
+      }
+
+      throw new Error('Invalid response from server: missing result')
+    } catch (error: any) {
+      console.error('Error in generateSoapNote:', error)
+      throw new Error(error.response?.data?.message || error.message || 'Failed to generate SOAP note')
     }
   },
 }
