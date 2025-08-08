@@ -24,7 +24,7 @@ import {
   Target,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { authApi } from "@/lib/api"
+import { soapApi } from "@/lib/api"
 import PatientSelector from "@/components/patient-selector" 
 
 interface SpeakerSegment {
@@ -40,7 +40,8 @@ interface Speaker {
 
 interface Patient {
   id: string
-  name: string
+  firstname: string
+  lastname: string
   age: number
   gender: string
   dob: string
@@ -122,11 +123,25 @@ export default function GeneratePage() {
       return
     }
 
+    // Get current user from localStorage
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+    const userId = currentUser.id || currentUser._id
+
+    if (!userId) {
+      toast({
+        title: "Authentication Error",
+        description: "Please login again to continue",
+        variant: "destructive",
+      })
+      return
+    }
+
     const formData = new FormData()
     formData.append("file", file)
     formData.append("payload", JSON.stringify({ 
-      user_id: selectedPatient.id,
-      patient_name: selectedPatient.name,
+      user_id: userId,
+      patient_id: selectedPatient.id,
+      patient_name: selectedPatient.firstname + " " + selectedPatient.lastname,
       patient_age: selectedPatient.age,
       patient_gender: selectedPatient.gender
     }))
@@ -135,7 +150,7 @@ export default function GeneratePage() {
       setIsProcessing(true)
       setProgress(10)
 
-      const data = await authApi.generateSoapNote(formData, (percent: number) => {
+      const data = await soapApi.generateSoapNote(formData, (percent: number) => {
         setProgress(percent * 0.6)
       })
 
@@ -194,50 +209,52 @@ export default function GeneratePage() {
 
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         {!soapNote ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Upload Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Upload className="h-5 w-5" /> Audio Upload
-                </CardTitle>
-                <CardDescription>Upload your patient consultation recording</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div
-                  {...getRootProps()}
-                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                    isDragActive ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-gray-400"
-                  }`}
-                >
-                  <input {...getInputProps()} />
-                  {file ? (
-                    <div className="space-y-2">
-                      <FileAudio className="h-12 w-12 text-blue-600 mx-auto" />
-                      <p className="font-medium text-gray-900">{file.name}</p>
-                      <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                      <Badge variant="secondary">Ready to process</Badge>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <Upload className="h-12 w-12 text-gray-400 mx-auto" />
-                      <p className="text-lg font-medium text-gray-900">
-                        {isDragActive ? "Drop your audio file here" : "Upload audio file"}
-                      </p>
-                      <p className="text-sm text-gray-500">Supports MP3, WAV, M4A files up to 100MB</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Upload Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Upload className="h-5 w-5" /> Audio Upload
+                  </CardTitle>
+                  <CardDescription>Upload your patient consultation recording</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div
+                    {...getRootProps()}
+                    className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                      isDragActive ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-gray-400"
+                    }`}
+                  >
+                    <input {...getInputProps()} />
+                    {file ? (
+                      <div className="space-y-2">
+                        <FileAudio className="h-12 w-12 text-blue-600 mx-auto" />
+                        <p className="font-medium text-gray-900">{file.name}</p>
+                        <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                        <Badge variant="secondary">Ready to process</Badge>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Upload className="h-12 w-12 text-gray-400 mx-auto" />
+                        <p className="text-lg font-medium text-gray-900">
+                          {isDragActive ? "Drop your audio file here" : "Upload audio file"}
+                        </p>
+                        <p className="text-sm text-gray-500">Supports MP3, WAV, M4A files up to 100MB</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Patient Information */}
-            <PatientSelector
-              selectedPatient={selectedPatient}
-              onPatientSelect={setSelectedPatient}
-            />
+              {/* Patient Information */}
+              <PatientSelector
+                selectedPatient={selectedPatient}
+                onPatientSelect={setSelectedPatient}
+              />
+            </div>
 
-            {/* Additional Notes */}
+            {/* Additional Notes - Full Width */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

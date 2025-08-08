@@ -14,7 +14,8 @@ import { authApi } from "@/lib/api"
 
 interface Patient {
   id: string
-  name: string
+  firstname: string
+  lastname: string
   age: number
   gender: string
   dob: string
@@ -38,7 +39,8 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
 
   // Form state for new patient
   const [newPatient, setNewPatient] = useState({
-    name: "",
+    firstname: "",
+    lastname: "",
     age: "",
     gender: "",
     dob: "",
@@ -56,7 +58,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
     try {
       const patientsData = await authApi.getPatients()
       setPatients(patientsData)
-    } catch (error: any) {
+    } catch (error: any) {  
       console.error('Failed to load patients:', error)
       toast({
         title: "Error",
@@ -74,7 +76,8 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
 
     try {
       const patientData = {
-        name: newPatient.name,
+        firstname: newPatient.firstname,
+        lastname: newPatient.lastname,
         age: parseInt(newPatient.age),
         gender: newPatient.gender,
         dob: newPatient.dob,
@@ -91,7 +94,8 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
       
       // Reset form
       setNewPatient({
-        name: "",
+        firstname: "",
+        lastname: "",
         age: "",
         gender: "",
         dob: "",
@@ -102,7 +106,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
 
       toast({
         title: "Patient Created",
-        description: `${createdPatient.name} has been added successfully`,
+        description: `${createdPatient.firstname} ${createdPatient.lastname} has been added successfully`,
       })
     } catch (error: any) {
       console.error('Failed to create patient:', error)
@@ -117,7 +121,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
   }
 
   const formatPatientDisplay = (patient: Patient) => {
-    return `${patient.name} (${patient.age} years, ${patient.gender})`
+    return `${patient.firstname} ${patient.lastname} (${patient.age} years, ${patient.gender})`
   }
 
   const calculateAge = (dob: string) => {
@@ -172,7 +176,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                       {patients.map((patient) => (
                         <SelectItem key={patient.id} value={patient.id}>
                           <div className="flex items-center justify-between w-full">
-                            <span>{patient.name}</span>
+                            <span>{patient.firstname} {patient.lastname}</span>
                             <Badge variant="secondary" className="ml-2">
                               {patient.age} years, {patient.gender}
                             </Badge>
@@ -187,7 +191,7 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <h4 className="font-medium text-blue-900 mb-2">Selected Patient</h4>
                     <div className="space-y-1 text-sm text-blue-800">
-                      <p><strong>Name:</strong> {selectedPatient.name}</p>
+                      <p><strong>Name:</strong> {selectedPatient.firstname} {selectedPatient.lastname}</p>
                       <p><strong>Age:</strong> {selectedPatient.age} years</p>
                       <p><strong>Gender:</strong> {selectedPatient.gender}</p>
                       <p><strong>DOB:</strong> {new Date(selectedPatient.dob).toLocaleDateString()}</p>
@@ -213,15 +217,26 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
             <form onSubmit={handleCreatePatient} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Full Name *</Label>
+                  <Label htmlFor="name">First Name *</Label>
                   <Input
-                    id="name"
-                    value={newPatient.name}
-                    onChange={(e) => setNewPatient({ ...newPatient, name: e.target.value })}
+                    id="firstname"
+                    value={newPatient.firstname}
+                    onChange={(e) => setNewPatient({ ...newPatient, firstname: e.target.value })}
                     placeholder="John Doe"
                     required
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastname">Last Name *</Label>
+                  <Input
+                    id="lastname"
+                    value={newPatient.lastname}
+                    onChange={(e) => setNewPatient({ ...newPatient, lastname: e.target.value })}
+                    placeholder="Doe"
+                    required
+                  />
+                </div>
+
 
                 <div className="space-y-2">
                   <Label htmlFor="age">Age *</Label>

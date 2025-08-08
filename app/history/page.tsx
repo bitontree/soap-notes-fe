@@ -98,14 +98,43 @@ export default function HistoryPage() {
   // Helper function to safely extract string from object
   const extractText = (data: any, maxLength: number = 100): string => {
     if (typeof data === 'string') {
-      return data.length > maxLength ? data.substring(0, maxLength) + '...' : data
+      return data
     }
     if (typeof data === 'object' && data !== null) {
       // Try to extract meaningful text from object
       const textValues = Object.values(data).filter(v => typeof v === 'string').join(' ')
-      return textValues.length > maxLength ? textValues.substring(0, maxLength) + '...' : textValues || 'No text content'
+      return textValues || 'No text content'
     }
     return 'No content'
+  }
+
+  // Helper function to format SOAP data like generate page
+  const formatSubjective = (subjective: any): string => {
+    if (!subjective) return ""
+    if (typeof subjective === 'string') return subjective
+    return Object.values(subjective)
+      .filter(Boolean)
+      .join("\n\n")
+  }
+
+  const formatObjective = (objective: any): string => {
+    if (!objective) return ""
+    if (typeof objective === 'string') return objective
+    return Object.values(objective)
+      .filter(Boolean)
+      .join("\n\n")
+  }
+
+  const formatPlan = (plan: any): string => {
+    if (!plan) return ""
+    if (typeof plan === 'string') return plan
+    if (typeof plan === 'object' && plan.recommendations) {
+      const recs = plan.recommendations
+        ? plan.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n")
+        : ""
+      return `Recommendations:\n${recs}\n\nFollow-up: ${plan.follow_up || ""}`
+    }
+    return Object.values(plan).filter(Boolean).join("\n\n")
   }
 
   // Format date for display
@@ -415,20 +444,15 @@ export default function HistoryPage() {
                             Subjective
                           </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                          <p className="text-sm text-gray-700 leading-relaxed">
-                            {extractText(selectedNote.soap_data.subjective, 500)}
-                          </p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="mt-2"
-                            onClick={() => copyToClipboard(extractText(selectedNote.soap_data.subjective, 1000))}
-                          >
-                            <Copy className="mr-1 h-3 w-3" />
-                            Copy
-                          </Button>
-                        </CardContent>
+                                                 <CardContent>
+                           <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                             {formatSubjective(selectedNote.soap_data.subjective)}
+                           </pre>
+                           <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(formatSubjective(selectedNote.soap_data.subjective))}>
+                             <Copy className="mr-1 h-3 w-3" />
+                             Copy
+                           </Button>
+                         </CardContent>
                       </Card>
 
                       <Card>
@@ -438,20 +462,15 @@ export default function HistoryPage() {
                             Objective
                           </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                          <p className="text-sm text-gray-700 leading-relaxed">
-                            {extractText(selectedNote.soap_data.objective, 500)}
-                          </p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="mt-2"
-                            onClick={() => copyToClipboard(extractText(selectedNote.soap_data.objective, 1000))}
-                          >
-                            <Copy className="mr-1 h-3 w-3" />
-                            Copy
-                          </Button>
-                        </CardContent>
+                                                 <CardContent>
+                           <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                             {formatObjective(selectedNote.soap_data.objective)}
+                           </pre>
+                           <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(formatObjective(selectedNote.soap_data.objective))}>
+                             <Copy className="mr-1 h-3 w-3" />
+                             Copy
+                           </Button>
+                         </CardContent>
                       </Card>
 
                       <Card>
@@ -462,15 +481,8 @@ export default function HistoryPage() {
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <p className="text-sm text-gray-700 leading-relaxed">
-                            {selectedNote.soap_data.assessment}
-                          </p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="mt-2"
-                            onClick={() => copyToClipboard(selectedNote.soap_data.assessment)}
-                          >
+                          <p className="text-sm text-gray-700 leading-relaxed">{selectedNote.soap_data.assessment}</p>
+                          <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(selectedNote.soap_data.assessment)}>
                             <Copy className="mr-1 h-3 w-3" />
                             Copy
                           </Button>
@@ -484,20 +496,13 @@ export default function HistoryPage() {
                             Plan
                           </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                          <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-                            {extractText(selectedNote.soap_data.plan, 500)}
-                          </div>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="mt-2" 
-                            onClick={() => copyToClipboard(extractText(selectedNote.soap_data.plan, 1000))}
-                          >
-                            <Copy className="mr-1 h-3 w-3" />
-                            Copy
-                          </Button>
-                        </CardContent>
+                                                 <CardContent>
+                           <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{formatPlan(selectedNote.soap_data.plan)}</pre>
+                           <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(formatPlan(selectedNote.soap_data.plan))}>
+                             <Copy className="mr-1 h-3 w-3" />
+                             Copy
+                           </Button>
+                         </CardContent>
                       </Card>
                     </div>
                   </TabsContent>
@@ -505,17 +510,17 @@ export default function HistoryPage() {
                   <TabsContent value="transcript">
                     <Card>
                       <CardHeader>
-                        <CardTitle>Full Transcript</CardTitle>
-                        <CardDescription>Complete conversation with speaker identification</CardDescription>
+                        <CardTitle>Diarized Transcript</CardTitle>
+                        <CardDescription>Raw diarized transcript text from backend</CardDescription>
                       </CardHeader>
                       <CardContent>
-                      <pre className="whitespace-pre-wrap text-gray-700">
-        {selectedNote.diarized_transcript
-          ? selectedNote.diarized_transcript
-              .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
-              .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
-          : "No diarized transcript available."}
-      </pre>
+                        <pre className="whitespace-pre-wrap text-gray-700">
+                          {selectedNote.diarized_transcript
+                            ? selectedNote.diarized_transcript
+                                .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
+                                .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
+                            : "No diarized transcript available."}
+                        </pre>
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -528,29 +533,7 @@ export default function HistoryPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-4">
-                          <div className="text-sm text-gray-700 leading-relaxed">
-                            {selectedNote.summary || 'No summary available'}
-                          </div>
-                          {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                            <div className="text-center p-4 bg-blue-50 rounded-lg">
-                              <div className="text-2xl font-bold text-blue-600">
-                                {formatDate(selectedNote.created_at)}
-                              </div>
-                              <div className="text-sm text-gray-600">Created Date</div>
-                            </div>
-                            <div className="text-center p-4 bg-green-50 rounded-lg">
-                              <div className="text-2xl font-bold text-green-600">
-                                {selectedNote.id}
-                              </div>
-                              <div className="text-sm text-gray-600">Note ID</div>
-                            </div>
-                            <div className="text-center p-4 bg-purple-50 rounded-lg">
-                              <div className="text-2xl font-bold text-purple-600">
-                                {selectedNote.user_id}
-                              </div>
-                              <div className="text-sm text-gray-600">User ID</div>
-                            </div>
-                          </div> */}
+                          <pre className="whitespace-pre-wrap text-gray-700">{selectedNote.summary || 'No summary available'}</pre>
                         </div>
                       </CardContent>
                     </Card>
