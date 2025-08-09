@@ -143,7 +143,7 @@ export default function GeneratePage() {
       patient_id: selectedPatient.id,
       patient_name: selectedPatient.firstname + " " + selectedPatient.lastname,
       patient_age: selectedPatient.age,
-      patient_gender: selectedPatient.gender
+      notes: notes // Include additional notes if any
     }))
 
     try {
