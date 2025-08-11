@@ -1,5 +1,5 @@
 import axios from "axios";
-
+import { toast } from "react-toastify"
 // Base URL from env or fallback
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -309,7 +309,7 @@ export const authApi = {
     return { message: response.message || "Password reset successfully" };
   },
 
-  // ✅ Updated to call /user/patients
+  // ✅ Call /user/patients
   async getPatients(): Promise<Patient[]> {
     const response = await apiRequest<Patient[]>("/patients", {
       headers: {
@@ -347,6 +347,7 @@ export async function uploadHealthReportApi(
 ): Promise<any> {
   const authHeaders = getAuthHeaders();
   const apiKeyHeaders = getApiKeyAuthHeaders();
+
   if (!authHeaders.authorization || !apiKeyHeaders["x-api-key"]) {
     throw new Error("Missing access token or API key. Please login again.");
   }
@@ -358,7 +359,7 @@ export async function uploadHealthReportApi(
   );
 
   const response = await axios.post(
-    `${API_BASE_URL}/health-report/parse/${userId}`,
+    `${API_BASE_URL}/healthreport/parse`,   
     formData,
     {
       headers: {
@@ -374,9 +375,12 @@ export async function uploadHealthReportApi(
       },
     } as any
   );
+
+  // Success toast after upload + parse
+  toast.success("Health Report Uploaded and parsed.");
+
   return response.data;
 }
-
 // Interface for /generate-soap-note response result
 export interface GenerateSoapNoteResponse {
   soap_data: {
@@ -411,7 +415,7 @@ export async function parseHealthReportApi(
   formData.append("file", file);
 
   const response = await axios.post(
-    `${API_BASE_URL}/health-report/parse/${userId}`,
+    `${API_BASE_URL}/healthreport/parse`,
     formData,
     {
       headers: {
