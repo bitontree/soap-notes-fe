@@ -26,6 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { soapApi } from "@/lib/api"
 import PatientSelector from "@/components/patient-selector" 
+import { useAuth } from "@/contexts/auth-context"
 
 interface SpeakerSegment {
   text: string
@@ -93,6 +94,7 @@ export default function GeneratePage() {
   const [progress, setProgress] = useState(0)
   const [soapNote, setSOAPNote] = useState<SOAPNote | null>(null)
   const { toast } = useToast()
+  const { user } = useAuth()
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -123,11 +125,7 @@ export default function GeneratePage() {
       return
     }
 
-    // Get current user from localStorage
-    const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
-    const userId = currentUser.id || currentUser._id
-
-    if (!userId) {
+    if (!user) {
       toast({
         title: "Authentication Error",
         description: "Please login again to continue",
@@ -139,7 +137,7 @@ export default function GeneratePage() {
     const formData = new FormData()
     formData.append("file", file)
     formData.append("payload", JSON.stringify({ 
-      user_id: userId,
+      user_id: user.id,
       patient_id: selectedPatient.id,
       patient_name: selectedPatient.firstname + " " + selectedPatient.lastname,
       patient_age: selectedPatient.age,
@@ -409,39 +407,22 @@ export default function GeneratePage() {
               </TabsContent>
 
               <TabsContent value="transcript">
-  <Card>
-    <CardHeader>
-      <CardTitle>Diarized Transcript</CardTitle>
-      <CardDescription>Raw diarized transcript text from backend</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <pre className="whitespace-pre-wrap text-gray-700">
-        {soapNote.diarized_transcript
-          ? soapNote.diarized_transcript
-              .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
-              .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
-          : "No diarized transcript available."}
-      </pre>
-    </CardContent>
-  </Card>
-</TabsContent>
-
-
-
-
-     <TabsContent value="summary">
-  <Card>
-    <CardHeader>
-      <CardTitle>Session Summary</CardTitle>
-      <CardDescription>Key metrics and insights from the consultation</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-4">
-        <pre className="whitespace-pre-wrap text-gray-700">{soapNote.summary}</pre>
-      </div>
-    </CardContent>
-  </Card>
-</TabsContent>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Diarized Transcript</CardTitle>
+                    <CardDescription>Raw diarized transcript text from backend</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="whitespace-pre-wrap text-gray-700">
+                      {soapNote.diarized_transcript
+                        ? soapNote.diarized_transcript
+                            .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
+                            .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
+                        : "No diarized transcript available."}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
               <TabsContent value="summary">
                 <Card>
