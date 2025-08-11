@@ -15,7 +15,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string, redirectTo?: string) => Promise<void>
   signup: (firstname: string, lastname: string, email: string, password: string) => Promise<void>
   logout: () => void
   isLoading: boolean
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initializeAuth()
   }, [])
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, redirectTo: string = "/dashboard") => {
     setIsLoading(true)
     try {
       const { token, user: userData, api_key } = await authApi.login({ email, password })
@@ -75,7 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("api_key", api_key)
       }
       setUser(userData)
-      router.push("/dashboard")
+      
+      // Use replace instead of push to avoid login page in history
+      router.replace(redirectTo)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed"
       throw new Error(message)
@@ -95,7 +97,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("api_key", api_key)
       }
       setUser(userData)
-      router.push("/login")
+      
+      // Clear user state since signup should redirect to login
+      setUser(null)
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
+      
+      // Use replace instead of push to avoid signup page in history
+      router.replace("/login?message=signup-success")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Signup failed"
       throw new Error(message)
@@ -113,7 +122,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
       setUser(null)
-      router.push("/login")
+      
+      // Use replace instead of push to avoid dashboard in history after logout
+      router.replace("/login")
     }
   }
 

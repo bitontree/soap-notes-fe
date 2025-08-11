@@ -73,92 +73,92 @@ export default function DashboardPage() {
       <WelcomeBanner />
 
       <div className="p-6 space-y-6">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat) => (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">{stat.title}</CardTitle>
-                <stat.icon className={`h-4 w-4 ${stat.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-                <div className="flex items-center text-xs text-gray-600 mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  {stat.change} from last month
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5" />
-                Quick Actions
-              </CardTitle>
-              <CardDescription>Start your medical documentation workflow</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href="/generate">
-                <Button className="w-full justify-start gap-2">
-                  <FileText className="h-4 w-4" />
-                  Generate New SOAP Note
-                </Button>
-              </Link>
-              <Link href="/ehr">
-                <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
-                  <Activity className="h-4 w-4" />
-                  Import from EHR
-                </Button>
-              </Link>
-              <Link href="/history">
-                <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
-                  <Clock className="h-4 w-4" />
-                  View All Records
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-
-          {/* Recent Notes */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Recent SOAP Notes</CardTitle>
-              <CardDescription>Your latest medical documentation</CardDescription>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {stats.map((stat) => (
+          <Card key={stat.title}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">{stat.title}</CardTitle>
+              <stat.icon className={`h-4 w-4 ${stat.color}`} />
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentNotes.map((note) => (
-                  <div key={note.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium text-gray-900">{note.patient}</h4>
-                        <Badge variant={note.status === "completed" ? "default" : "secondary"}>{note.status}</Badge>
-                      </div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        {note.type} • {note.date} at {note.time}
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm">
-                      View
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 pt-4 border-t">
-                <Link href="/history">
-                  <Button variant="outline" className="w-full bg-transparent">
-                    View All Notes
-                  </Button>
-                </Link>
+              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+              <div className="flex items-center text-xs text-gray-600 mt-1">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {stat.change} from last month
               </div>
             </CardContent>
           </Card>
-        </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Quick Actions
+            </CardTitle>
+            <CardDescription>Start your medical documentation workflow</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Link href="/generate">
+              <Button className="w-full justify-start gap-2">
+                <FileText className="h-4 w-4" />
+                Generate New SOAP Note
+              </Button>
+            </Link>
+            <Link href="/ehr">
+              <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
+                <Activity className="h-4 w-4" />
+                Import from EHR
+              </Button>
+            </Link>
+            <Link href="/history">
+              <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
+                <Clock className="h-4 w-4" />
+                View All Records
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Recent Notes */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Recent SOAP Notes</CardTitle>
+            <CardDescription>Your latest medical documentation</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {recentNotes.map((note) => (
+                <div key={note.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium text-gray-900">{note.patient}</h4>
+                      <Badge variant={note.status === "completed" ? "default" : "secondary"}>{note.status}</Badge>
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      {note.type} • {note.date} at {note.time}
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm">
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 pt-4 border-t">
+              <Link href="/history">
+                <Button variant="outline" className="w-full bg-transparent">
+                  View All Notes
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
       </div>
     </div>
   )
