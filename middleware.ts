@@ -38,9 +38,8 @@ export function middleware(request: NextRequest) {
 
   // If accessing a protected route without authentication
   if (isProtectedRoute && !token) {
-    const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(loginUrl)
+    // Always redirect to login without dynamic redirect params
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
   // If accessing a public route while authenticated, redirect to dashboard

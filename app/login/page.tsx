@@ -4,7 +4,6 @@ import type React from "react"
 
 import { useState } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,15 +17,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const { login, isLoading } = useAuth()
   const { toast } = useToast()
-  const searchParams = useSearchParams()
-  
-  // Get redirect parameter from URL, default to dashboard
-  const redirectTo = searchParams.get('redirect') || '/dashboard'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await login(email, password, redirectTo)
+      await login(email, password)
     } catch (error) {
       toast({
         title: "Login Failed",

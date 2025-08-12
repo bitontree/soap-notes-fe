@@ -15,7 +15,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null
-  login: (email: string, password: string, redirectTo?: string) => Promise<void>
+  login: (email: string, password: string) => Promise<void>
   signup: (firstname: string, lastname: string, email: string, password: string) => Promise<void>
   logout: () => void
   isLoading: boolean
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initializeAuth()
   }, [])
 
-  const login = async (email: string, password: string, redirectTo: string = "/dashboard") => {
+  const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
       const { token, user: userData, api_key } = await authApi.login({ email, password })
@@ -76,8 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setUser(userData)
       
-      // Use replace instead of push to avoid login page in history
-      router.replace(redirectTo)
+      // Always redirect to dashboard after login
+      router.replace("/dashboard")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed"
       throw new Error(message)
