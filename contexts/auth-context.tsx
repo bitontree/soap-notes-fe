@@ -15,7 +15,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null
-  login: (email: string, password: string, redirectTo?: string) => Promise<void>
+  login: (email: string, password: string) => Promise<void>
   signup: (firstname: string, lastname: string, email: string, password: string) => Promise<void>
   logout: () => void
   isLoading: boolean
@@ -75,7 +75,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("api_key", api_key)
       }
       setUser(userData)
-      
+
+      // NEW: also set a cookie so middleware can see auth
+      const maxAge = 60 * 60 * 24 * 7 // 7 days
+      const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "Secure; " : ""
+      document.cookie = `token=${token}; Path=/; Max-Age=${maxAge}; ${secure}SameSite=Lax`
+
       // Use replace instead of push to avoid login page in history
       router.replace(redirectTo)
     } catch (error) {
@@ -122,7 +127,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
       setUser(null)
-      
+
+      // NEW: clear cookie so middleware blocks protected routes again
+      document.cookie = "token=; Path=/; Max-Age=0"
+      document.cookie = "access_token=; Path=/; Max-Age=0"
+
       // Use replace instead of push to avoid dashboard in history after logout
       router.replace("/login")
     }
