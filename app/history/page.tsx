@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/auth-context"
 interface SOAPNote {
   id: string
   user_id: string
+  patient_name?: string  // Patient name from backend
   soap_data: {
     subjective: any  // Object in your backend
     objective: any   // Object in your backend
@@ -297,7 +298,7 @@ export default function HistoryPage() {
                   <div className="flex-1 space-y-3">
                     <div className="flex items-center gap-3">
                       <h3 className="text-lg font-semibold text-gray-900">
-                        {note.user_id}
+                        {note.patient_name || 'Unknown Patient'}
                       </h3>
                       <Badge variant="default" className="text-xs">
                         completed

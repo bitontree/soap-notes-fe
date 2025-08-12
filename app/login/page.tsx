@@ -2,8 +2,9 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,19 +14,42 @@ import { Stethoscope, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+          <Card className="w-full max-w-md">
+            <CardContent className="text-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+              <p>Loading...</p>
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
+  )
+}
+
+function LoginContent() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const { login, isLoading } = useAuth()
   const { toast } = useToast()
+  const searchParams = useSearchParams()
+  
+  // Get redirect parameter from URL, default to dashboard
+  const redirectTo = searchParams.get('redirect') || '/dashboard'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await login(email, password)
+      await login(email, password, redirectTo)
     } catch (error) {
       toast({
         title: "Login Failed",
-        description: "Invalid email or password",
+        description: error instanceof Error ? error.message : "Please check your credentials and try again.",
         variant: "destructive",
       })
     }

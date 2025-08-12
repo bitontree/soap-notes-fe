@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Header } from "@/components/layout/header"
 import { WelcomeBanner } from "@/components/welcome-banner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -7,6 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity } from "lucide-react"
 import Link from "next/link"
+import { soapApi } from "@/lib/api" 
+import { useToast } from "@/hooks/use-toast"
 
 const stats = [
   {
@@ -39,34 +42,27 @@ const stats = [
   },
 ]
 
-const recentNotes = [
-  {
-    id: "1",
-    patient: "John Doe",
-    date: "2024-01-15",
-    time: "10:30 AM",
-    status: "completed",
-    type: "Follow-up",
-  },
-  {
-    id: "2",
-    patient: "Jane Smith",
-    date: "2024-01-15",
-    time: "09:15 AM",
-    status: "processing",
-    type: "Initial Consultation",
-  },
-  {
-    id: "3",
-    patient: "Robert Johnson",
-    date: "2024-01-14",
-    time: "03:45 PM",
-    status: "completed",
-    type: "Annual Checkup",
-  },
-]
-
 export default function DashboardPage() {
+  const [recentNotes, setRecentNotes] = useState<any[]>([])
+  const { toast } = useToast()
+
+
+  useEffect(() => {
+    const fetchNotes = async () => {
+      try {
+        const data = await soapApi.getNotes(1, 3) // page=1, limit=3
+        setRecentNotes(data.soap_notes || [])
+      } catch (error: any) {
+        toast({
+          title: "Error loading recent notes",
+          description: error.message || "Failed to fetch recent SOAP notes",
+          variant: "destructive",
+        })
+      }
+    }
+    fetchNotes()
+  }, [toast])
+
   return (
     <div>
       <Header title="Dashboard" description="Overview of your medical documentation activity" />
@@ -124,7 +120,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Recent Notes */}
+          {/* ✅ Recent Notes from API */}
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Recent SOAP Notes</CardTitle>
@@ -132,22 +128,29 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentNotes.map((note) => (
-                  <div key={note.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium text-gray-900">{note.patient}</h4>
-                        <Badge variant={note.status === "completed" ? "default" : "secondary"}>{note.status}</Badge>
+                {recentNotes.length > 0 ? (
+                  recentNotes.map((note) => (
+                    <div key={note.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-gray-900">{note.patient_name || "Unknown Patient"}</h4>
+                          <Badge variant={note.status === "completed" ? "default" : "secondary"}>
+                            {note.status || "unknown"}
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          {note.type || "SOAP Note"} •{" "}
+                          {note.created_at ? new Date(note.created_at).toLocaleDateString() : "Unknown date"}
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        {note.type} • {note.date} at {note.time}
-                      </div>
+                      <Button variant="ghost" size="sm">
+                        View
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="sm">
-                      View
-                    </Button>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">No recent notes available.</p>
+                )}
               </div>
               <div className="mt-4 pt-4 border-t">
                 <Link href="/history">

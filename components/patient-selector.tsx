@@ -1,41 +1,56 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
-import { User, Plus, Loader2 } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import { authApi } from "@/lib/api"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { User, Plus, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { authApi } from "@/lib/api";
 
 interface Patient {
-  id: string
-  firstname: string
-  lastname: string
-  age: number
-  gender: string
-  dob: string
-  email?: string
-  phone?: string
-  address?: string
-  created_at: string
+  id: string;
+  firstname: string;
+  lastname: string;
+  age: number;
+  gender: string;
+  dob: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  created_at: string;
 }
 
 interface PatientSelectorProps {
-  selectedPatient: Patient | null
-  onPatientSelect: (patient: Patient | null) => void
+  selectedPatient: Patient | null;
+  onPatientSelect: (patient: Patient | null) => void;
 }
 
-export default function PatientSelector({ selectedPatient, onPatientSelect }: PatientSelectorProps) {
-  const [patients, setPatients] = useState<Patient[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [isCreating, setIsCreating] = useState(false)
-  const [activeTab, setActiveTab] = useState("select")
-  const { toast } = useToast()
+export default function PatientSelector({
+  selectedPatient,
+  onPatientSelect,
+}: PatientSelectorProps) {
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [activeTab, setActiveTab] = useState("select");
+  const { toast } = useToast();
 
   // Form state for new patient
   const [newPatient, setNewPatient] = useState({
@@ -47,32 +62,32 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
     email: "",
     phone: "",
     address: "",
-  })
+  });
 
   useEffect(() => {
-    loadPatients()
-  }, [])
+    loadPatients();
+  }, []);
 
   const loadPatients = async () => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const patientsData = await authApi.getPatients()
-      setPatients(patientsData)
+      const patientsData = await authApi.getPatients();
+      setPatients(patientsData);
     } catch (error: any) {
-      console.error("Failed to load patients:", error)
+      console.error("Failed to load patients:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to load patients",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleCreatePatient = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsCreating(true)
+    e.preventDefault();
+    setIsCreating(true);
 
     try {
       const patientData = {
@@ -84,13 +99,13 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
         email: newPatient.email || undefined,
         phone: newPatient.phone || undefined,
         address: newPatient.address || undefined,
-      }
+      };
 
-      const createdPatient = await authApi.createPatient(patientData)
+      const createdPatient = await authApi.createPatient(patientData);
 
-      setPatients([...patients, createdPatient])
-      onPatientSelect(createdPatient)
-      setActiveTab("select")
+      setPatients([...patients, createdPatient]);
+      onPatientSelect(createdPatient);
+      setActiveTab("select");
 
       // Reset form
       setNewPatient({
@@ -102,23 +117,43 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
         email: "",
         phone: "",
         address: "",
-      })
+      });
 
       toast({
         title: "Patient Created",
         description: `${createdPatient.firstname} ${createdPatient.lastname} has been added successfully`,
-      })
+      });
     } catch (error: any) {
-      console.error("Failed to create patient:", error)
+      console.error("Failed to create patient:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to create patient",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsCreating(false)
+      setIsCreating(false);
     }
-  }
+  };
+
+  const formatPatientDisplay = (patient: Patient) => {
+    return `${patient.firstname} ${patient.lastname} (${patient.age} years, ${patient.gender})`;
+  };
+
+  const calculateAge = (dob: string) => {
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+
+    return age;
+  };
 
   return (
     <Card>
@@ -126,7 +161,9 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
         <CardTitle className="flex items-center gap-2">
           <User className="h-5 w-5" /> Patient Information
         </CardTitle>
-        <CardDescription>Select an existing patient or create a new one</CardDescription>
+        <CardDescription>
+          Select an existing patient or create a new one
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -148,8 +185,8 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                   <Select
                     value={selectedPatient?.id || ""}
                     onValueChange={(value) => {
-                      const patient = patients.find((p) => p.id === value)
-                      onPatientSelect(patient || null)
+                      const patient = patients.find((p) => p.id === value);
+                      onPatientSelect(patient || null);
                     }}
                   >
                     <SelectTrigger>
@@ -159,8 +196,10 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                       {patients.map((patient) => (
                         <SelectItem key={patient.id} value={patient.id}>
                           <div className="flex justify-between w-full">
-                        <span>
-                              {patient.firstname} {patient.lastname} - {patient.age} yrs - {new Date(patient.dob).toLocaleDateString()}
+                            <span>
+                              {patient.firstname} {patient.lastname} -{" "}
+                              {patient.age} yrs -{" "}
+                              {new Date(patient.dob).toLocaleDateString()}
                             </span>
                             <Badge variant="secondary" className="ml-2">
                               {patient.gender}
@@ -174,10 +213,13 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
 
                 {selectedPatient && (
                   <div className="p-4 bg-blue-50 rounded-lg">
-                    <h4 className="font-medium text-blue-900 mb-2">Selected Patient</h4>
+                    <h4 className="font-medium text-blue-900 mb-2">
+                      Selected Patient
+                    </h4>
                     <div className="space-y-1 text-sm text-blue-800">
                       <p>
-                        <strong>Name:</strong> {selectedPatient.firstname} {selectedPatient.lastname}
+                        <strong>Name:</strong> {selectedPatient.firstname}{" "}
+                        {selectedPatient.lastname}
                       </p>
                       <p>
                         <strong>Age:</strong> {selectedPatient.age} years
@@ -186,7 +228,8 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                         <strong>Gender:</strong> {selectedPatient.gender}
                       </p>
                       <p>
-                        <strong>DOB:</strong> {new Date(selectedPatient.dob).toLocaleDateString()}
+                        <strong>DOB:</strong>{" "}
+                        {new Date(selectedPatient.dob).toLocaleDateString()}
                       </p>
                       {selectedPatient.email && (
                         <p>
@@ -201,7 +244,9 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                   <div className="text-center py-8 text-gray-500">
                     <User className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                     <p>No patients found</p>
-                    <p className="text-sm">Create your first patient to get started</p>
+                    <p className="text-sm">
+                      Create your first patient to get started
+                    </p>
                   </div>
                 )}
               </>
@@ -216,7 +261,12 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                   <Input
                     id="firstname"
                     value={newPatient.firstname}
-                    onChange={(e) => setNewPatient({ ...newPatient, firstname: e.target.value })}
+                    onChange={(e) =>
+                      setNewPatient({
+                        ...newPatient,
+                        firstname: e.target.value,
+                      })
+                    }
                     placeholder="John Doe"
                     required
                   />
@@ -226,12 +276,13 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                   <Input
                     id="lastname"
                     value={newPatient.lastname}
-                    onChange={(e) => setNewPatient({ ...newPatient, lastname: e.target.value })}
+                    onChange={(e) =>
+                      setNewPatient({ ...newPatient, lastname: e.target.value })
+                    }
                     placeholder="Doe"
                     required
                   />
                 </div>
-
 
                 <div className="space-y-2">
                   <Label htmlFor="age">Age *</Label>
@@ -241,7 +292,9 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                     min="0"
                     max="150"
                     value={newPatient.age}
-                    onChange={(e) => setNewPatient({ ...newPatient, age: e.target.value })}
+                    onChange={(e) =>
+                      setNewPatient({ ...newPatient, age: e.target.value })
+                    }
                     placeholder="30"
                     required
                   />
@@ -251,7 +304,9 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                   <Label htmlFor="gender">Gender *</Label>
                   <Select
                     value={newPatient.gender}
-                    onValueChange={(value) => setNewPatient({ ...newPatient, gender: value })}
+                    onValueChange={(value) =>
+                      setNewPatient({ ...newPatient, gender: value })
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select gender" />
@@ -270,7 +325,9 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                     id="dob"
                     type="date"
                     value={newPatient.dob}
-                    onChange={(e) => setNewPatient({ ...newPatient, dob: e.target.value })}
+                    onChange={(e) =>
+                      setNewPatient({ ...newPatient, dob: e.target.value })
+                    }
                     required
                   />
                 </div>
@@ -281,7 +338,9 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                     id="email"
                     type="email"
                     value={newPatient.email}
-                    onChange={(e) => setNewPatient({ ...newPatient, email: e.target.value })}
+                    onChange={(e) =>
+                      setNewPatient({ ...newPatient, email: e.target.value })
+                    }
                     placeholder="john@example.com"
                   />
                 </div>
@@ -292,7 +351,9 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                     id="phone"
                     type="tel"
                     value={newPatient.phone}
-                    onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
+                    onChange={(e) =>
+                      setNewPatient({ ...newPatient, phone: e.target.value })
+                    }
                     placeholder="+1 (555) 123-4567"
                   />
                 </div>
@@ -303,7 +364,9 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
                 <Input
                   id="address"
                   value={newPatient.address}
-                  onChange={(e) => setNewPatient({ ...newPatient, address: e.target.value })}
+                  onChange={(e) =>
+                    setNewPatient({ ...newPatient, address: e.target.value })
+                  }
                   placeholder="123 Main St, City, State 12345"
                 />
               </div>
@@ -335,5 +398,5 @@ export default function PatientSelector({ selectedPatient, onPatientSelect }: Pa
         </Tabs>
       </CardContent>
     </Card>
-  )
+  );
 }

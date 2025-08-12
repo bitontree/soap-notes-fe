@@ -20,7 +20,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { uploadHealthReportApi } from "@/lib/api"
-import PatientSelector from "@/components/patient-selector"  // Make sure this component does NOT expect 'disabled' prop
+import PatientSelector from "@/components/patient-selector"
 
 type UploadResult = any
 
@@ -33,7 +33,6 @@ export default function HealthReportPage() {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
   const { toast } = useToast()
 
-  // Handle PDF file drop
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       const pdf = acceptedFiles[0]
@@ -56,7 +55,6 @@ export default function HealthReportPage() {
     maxFiles: 1,
   })
 
-  // Reset form fields and state
   const resetForm = () => {
     setFile(null)
     setSelectedPatient(null)
@@ -80,7 +78,6 @@ export default function HealthReportPage() {
     })
   }
 
-  // Upload handler
   const handleUpload = async () => {
     if (!file || !selectedPatient) {
       toast({
@@ -113,9 +110,11 @@ export default function HealthReportPage() {
 
       setProgress(100)
       setUploadResult(result)
+
+      // ✅ Updated toast message
       toast({
-        title: "Upload Successful",
-        description: `Health report for ${patientInfo.patient_name || "Patient"} uploaded successfully.`,
+        title: "Health Report Uploaded and parsed",
+        description: `Health report for ${patientInfo.patient_name || "Patient"} has been successfully uploaded and parsed.`,
       })
     } catch (error: any) {
       toast({
@@ -137,7 +136,6 @@ export default function HealthReportPage() {
       />
 
       <div className="p-6 max-w-6xl mx-auto space-y-6">
-        {/* Upload form */}
         {!uploadResult ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* PDF Upload */}
@@ -185,12 +183,11 @@ export default function HealthReportPage() {
               </CardContent>
             </Card>
 
-            {/* Patient Selector + Additional Notes */}
+            {/* Patient Selector + Notes */}
             <div className="space-y-6">
               <PatientSelector
                 selectedPatient={selectedPatient}
                 onPatientSelect={setSelectedPatient}
-                // Do NOT pass disabled prop to avoid TS error (remove disabled={isUploading})
               />
 
               <Card>
@@ -213,7 +210,7 @@ export default function HealthReportPage() {
             </div>
           </div>
         ) : (
-          // Upload result display with Tabs
+          // Upload result
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -222,12 +219,10 @@ export default function HealthReportPage() {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={exportDummyPDF}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export PDF
+                  <Download className="mr-2 h-4 w-4" /> Export PDF
                 </Button>
                 <Button variant="outline" onClick={() => copyToClipboard(JSON.stringify(uploadResult, null, 2))}>
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy Info
+                  <Copy className="mr-2 h-4 w-4" /> Copy Info
                 </Button>
                 <Button variant="ghost" onClick={resetForm}>
                   Upload Another
@@ -243,11 +238,9 @@ export default function HealthReportPage() {
                 <TabsTrigger value="report">Report</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="file" className="space-y-4">
+              <TabsContent value="file">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>File Information</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>File Information</CardTitle></CardHeader>
                   <CardContent>
                     <p><strong>Filename:</strong> {uploadResult.filename}</p>
                     <p><strong>Saved As:</strong> {uploadResult.saved_as}</p>
@@ -256,11 +249,9 @@ export default function HealthReportPage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="patient" className="space-y-4">
+              <TabsContent value="patient">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Patient Information</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Patient Information</CardTitle></CardHeader>
                   <CardContent>
                     <p><strong>ID:</strong> {selectedPatient?.id || selectedPatient?._id || "N/A"}</p>
                     <p><strong>Name:</strong> {`${selectedPatient?.firstname ?? ""} ${selectedPatient?.lastname ?? ""}`.trim() || "N/A"}</p>
@@ -270,24 +261,22 @@ export default function HealthReportPage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="notes" className="space-y-4">
+              <TabsContent value="notes">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Additional Notes</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Additional Notes</CardTitle></CardHeader>
                   <CardContent>
                     <pre className="whitespace-pre-wrap">{notes || "No additional notes"}</pre>
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              <TabsContent value="report" className="space-y-4">
+              <TabsContent value="report">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Parsed Report</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Parsed Report</CardTitle></CardHeader>
                   <CardContent>
-                    <pre className="whitespace-pre-wrap text-sm">{uploadResult ? JSON.stringify(uploadResult, null, 2) : "No report data"}</pre>
+                    <pre className="whitespace-pre-wrap text-sm">
+                      {uploadResult ? JSON.stringify(uploadResult, null, 2) : "No report data"}
+                    </pre>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -295,7 +284,6 @@ export default function HealthReportPage() {
           </div>
         )}
 
-        {/* Upload Button */}
         {!uploadResult && (
           <div className="flex justify-center pt-6">
             <Button
@@ -306,8 +294,7 @@ export default function HealthReportPage() {
             >
               {isUploading ? (
                 <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Uploading...
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Uploading...
                 </>
               ) : (
                 <>

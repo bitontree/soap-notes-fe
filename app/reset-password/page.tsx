@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,25 @@ import { useToast } from "@/hooks/use-toast"
 import { authApi } from "@/lib/api"
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+          <Card className="w-full max-w-md">
+            <CardContent className="text-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+              <p>Loading...</p>
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <ResetPasswordContent />
+    </Suspense>
+  )
+}
+
+function ResetPasswordContent() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -25,14 +44,14 @@ export default function ResetPasswordPage() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    const tokenFromUrl = searchParams.get('token')
+    const tokenFromUrl = searchParams.get("token")
     if (!tokenFromUrl) {
       toast({
         title: "Invalid Link",
         description: "Password reset link is invalid or missing token.",
         variant: "destructive",
       })
-      router.push('/login')
+      router.push("/login")
       return
     }
     setToken(tokenFromUrl)
@@ -40,7 +59,7 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (password !== confirmPassword) {
       toast({
         title: "Passwords Don't Match",
@@ -63,14 +82,14 @@ export default function ResetPasswordPage() {
 
     try {
       await authApi.resetPassword(token, password)
-      
+
       setIsSuccess(true)
       toast({
         title: "Password Reset Successfully",
         description: "Your password has been updated. You can now log in with your new password.",
       })
     } catch (error: any) {
-      console.error('Reset password error:', error)
+      console.error("Reset password error:", error)
       toast({
         title: "Error",
         description: error.message || "Failed to reset password. Please try again.",
@@ -92,15 +111,11 @@ export default function ResetPasswordPage() {
               </div>
             </div>
             <CardTitle className="text-2xl font-bold text-gray-900">Password Reset Successfully</CardTitle>
-            <CardDescription>
-              Your password has been updated. You can now log in with your new password.
-            </CardDescription>
+            <CardDescription>Your password has been updated. You can now log in with your new password.</CardDescription>
           </CardHeader>
           <CardContent className="text-center">
             <Button asChild className="w-full">
-              <Link href="/login">
-                Continue to Login
-              </Link>
+              <Link href="/login">Continue to Login</Link>
             </Button>
           </CardContent>
         </Card>
@@ -131,9 +146,7 @@ export default function ResetPasswordPage() {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900">Reset Password</CardTitle>
-          <CardDescription>
-            Enter your new password below
-          </CardDescription>
+          <CardDescription>Enter your new password below</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -155,11 +168,7 @@ export default function ResetPasswordPage() {
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
@@ -181,11 +190,7 @@ export default function ResetPasswordPage() {
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 >
-                  {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
@@ -213,4 +218,4 @@ export default function ResetPasswordPage() {
       </Card>
     </div>
   )
-} 
+}
