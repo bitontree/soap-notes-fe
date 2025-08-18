@@ -6,10 +6,13 @@ import { WelcomeBanner } from "@/components/welcome-banner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye } from "lucide-react"
 import Link from "next/link"
 import { soapApi } from "@/lib/api" 
 import { useToast } from "@/hooks/use-toast"
+import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 
 const stats = [
   {
@@ -45,6 +48,9 @@ const stats = [
 export default function DashboardPage() {
   const [recentNotes, setRecentNotes] = useState<any[]>([])
   const { toast } = useToast()
+  const [selectedNote, setSelectedNote] = useState<any | null>(null)
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+  const [isExportingPDF, setIsExportingPDF] = useState(false)
 
 
   useEffect(() => {
@@ -62,6 +68,52 @@ export default function DashboardPage() {
     }
     fetchNotes()
   }, [toast])
+
+  // Formatting helpers (match history page behavior)
+  const formatSubjective = (subjective: any): string => {
+    if (!subjective) return ""
+    if (typeof subjective === 'string') return subjective
+    return Object.values(subjective).filter(Boolean).join("\n\n")
+  }
+
+  const formatObjective = (objective: any): string => {
+    if (!objective) return ""
+    if (typeof objective === 'string') return objective
+    return Object.values(objective).filter(Boolean).join("\n\n")
+  }
+
+  const formatPlan = (plan: any): string => {
+    if (!plan) return ""
+    if (typeof plan === 'string') return plan
+    if (typeof plan === 'object' && plan.recommendations) {
+      const recs = plan.recommendations ? plan.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n") : ""
+      return `Recommendations:\n${recs}\n\nFollow-up: ${plan.follow_up || ""}`
+    }
+    return Object.values(plan).filter(Boolean).join("\n\n")
+  }
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast({ title: "Copied!", description: "Text copied to clipboard" })
+    } catch {
+      toast({ title: "Error", description: "Failed to copy text", variant: "destructive" })
+    }
+  }
+
+  const exportToPDF = async (note: any) => {
+    if (!note) return
+    setIsExportingPDF(true)
+    try {
+      const filename = `soap-note-${note.patient_name || 'patient'}-${new Date(note.created_at).toISOString().split('T')[0]}.pdf`
+      await exportSOAPNoteToPDF(note, { filename, orientation: 'portrait', format: 'a4', margin: 20 })
+      toast({ title: "Success", description: "PDF exported successfully" })
+    } catch (error: any) {
+      toast({ title: "Export Failed", description: error?.message || "Failed to export PDF", variant: "destructive" })
+    } finally {
+      setIsExportingPDF(false)
+    }
+  }
 
   return (
     <div>
@@ -143,7 +195,12 @@ export default function DashboardPage() {
                           {note.created_at ? new Date(note.created_at).toLocaleDateString() : "Unknown date"}
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setSelectedNote(note); setIsViewModalOpen(true) }}
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
                         View
                       </Button>
                     </div>
@@ -162,6 +219,153 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+        {/* View SOAP Note Modal (same UX as history) */}
+        <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle className="h-6 w-6 text-green-600" />
+                <span>SOAP Note Details</span>
+              </DialogTitle>
+            </DialogHeader>
+
+            {selectedNote && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-end gap-2">
+                  <Button 
+                    variant="outline"
+                    onClick={() => exportToPDF(selectedNote)}
+                    disabled={isExportingPDF}
+                  >
+                    {isExportingPDF ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export PDF
+                      </>
+                    )}
+                  </Button>
+                  <Button variant="outline" onClick={() => copyToClipboard(JSON.stringify(selectedNote, null, 2))}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy All
+                  </Button>
+                </div>
+
+                <Tabs defaultValue="soap" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="soap">SOAP Note</TabsTrigger>
+                    <TabsTrigger value="transcript">Transcript</TabsTrigger>
+                    <TabsTrigger value="summary">Summary</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="soap" className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <UserIcon className="h-5 w-5 text-blue-600" />
+                            Subjective
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{formatSubjective(selectedNote.soap_data?.subjective)}</pre>
+                          <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(formatSubjective(selectedNote.soap_data?.subjective))}>
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Stethoscope className="h-5 w-5 text-green-600" />
+                            Objective
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{formatObjective(selectedNote.soap_data?.objective)}</pre>
+                          <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(formatObjective(selectedNote.soap_data?.objective))}>
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <ClipboardList className="h-5 w-5 text-orange-600" />
+                            Assessment
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-gray-700 leading-relaxed">{selectedNote.soap_data?.assessment}</p>
+                          <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(selectedNote.soap_data?.assessment)}>
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Target className="h-5 w-5 text-purple-600" />
+                            Plan
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <pre className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{formatPlan(selectedNote.soap_data?.plan)}</pre>
+                          <Button variant="ghost" size="sm" className="mt-2" onClick={() => copyToClipboard(formatPlan(selectedNote.soap_data?.plan))}>
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="transcript">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Diarized Transcript</CardTitle>
+                        <CardDescription>Raw diarized transcript text from backend</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <pre className="whitespace-pre-wrap text-gray-700">
+                          {selectedNote.diarized_transcript
+                            ? selectedNote.diarized_transcript
+                                .replace(/\[([^\]]+)\]/g, "$1:")
+                                .replace(/(\n)?([A-Za-z]+:)/g, "\n$2")
+                            : "No diarized transcript available."}
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="summary">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Session Summary</CardTitle>
+                        <CardDescription>Key metrics and insights from the consultation</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <pre className="whitespace-pre-wrap text-gray-700">{selectedNote.summary || 'No summary available'}</pre>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )
