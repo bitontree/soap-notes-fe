@@ -75,8 +75,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("api_key", api_key)
       }
       setUser(userData)
-      
-      // Always redirect to dashboard after login
       router.replace("/dashboard")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed"
@@ -122,7 +120,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
       setUser(null)
-      
+
+      // NEW: clear cookie so middleware blocks protected routes again
+      document.cookie = "token=; Path=/; Max-Age=0"
+      document.cookie = "access_token=; Path=/; Max-Age=0"
+
       // Use replace instead of push to avoid dashboard in history after logout
       router.replace("/login")
     }
