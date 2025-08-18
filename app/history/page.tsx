@@ -315,10 +315,6 @@ export default function HistoryPage() {
           <p className="text-sm text-gray-600">
             Showing {filteredNotes.length} of {totalNotes} SOAP notes (Page {currentPage} of {totalPages})
           </p>
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export All
-          </Button>
         </div>
 
         {/* Notes List */}
