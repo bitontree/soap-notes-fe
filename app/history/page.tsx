@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { soapApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
+import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 
 interface SOAPNote {
   id: string
@@ -45,6 +46,7 @@ export default function HistoryPage() {
   const [totalNotes, setTotalNotes] = useState(0)
   const [selectedNote, setSelectedNote] = useState<SOAPNote | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+  const [isExportingPDF, setIsExportingPDF] = useState(false)
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -205,12 +207,42 @@ export default function HistoryPage() {
     }
   }
 
-  const exportToPDF = () => {
-    // TODO: Implement PDF export functionality
-    toast({
-      title: "Export",
-      description: "PDF export functionality coming soon",
-    })
+  const exportToPDF = async (note?: SOAPNote) => {
+    const targetNote = note || selectedNote
+    if (!targetNote) {
+      toast({
+        title: "Error",
+        description: "No note selected for export",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsExportingPDF(true)
+    try {
+      const filename = `soap-note-${targetNote.patient_name || 'patient'}-${new Date(targetNote.created_at).toISOString().split('T')[0]}.pdf`
+      
+      await exportSOAPNoteToPDF(targetNote, {
+        filename,
+        orientation: 'portrait',
+        format: 'a4',
+        margin: 20
+      })
+
+      toast({
+        title: "Success",
+        description: "PDF exported successfully",
+      })
+    } catch (error) {
+      console.error('Failed to export PDF:', error)
+      toast({
+        title: "Export Failed",
+        description: error instanceof Error ? error.message : "Failed to export PDF. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsExportingPDF(false)
+    }
   }
 
   if (isLoading) {
@@ -344,7 +376,7 @@ export default function HistoryPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => exportToPDF(note)}>
                           <Download className="mr-2 h-4 w-4" />
                           Export PDF
                         </DropdownMenuItem>
@@ -419,9 +451,22 @@ export default function HistoryPage() {
             {selectedNote && (
               <div className="space-y-6">
                 <div className="flex items-center justify-end gap-2">
-                  <Button variant="outline" onClick={exportToPDF}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Export PDF
+                  <Button 
+                    variant="outline" 
+                    onClick={() => exportToPDF(selectedNote)}
+                    disabled={isExportingPDF}
+                  >
+                    {isExportingPDF ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export PDF
+                      </>
+                    )}
                   </Button>
                   <Button variant="outline" onClick={() => copyToClipboard(JSON.stringify(selectedNote, null, 2))}>
                     <Copy className="mr-2 h-4 w-4" />

@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initializeAuth()
   }, [])
 
-  const login = async (email: string, password: string, redirectTo: string = "/dashboard") => {
+  const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
       const { token, user: userData, api_key } = await authApi.login({ email, password })
@@ -75,14 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("api_key", api_key)
       }
       setUser(userData)
-
-      // NEW: also set a cookie so middleware can see auth
-      const maxAge = 60 * 60 * 24 * 7 // 7 days
-      const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "Secure; " : ""
-      document.cookie = `token=${token}; Path=/; Max-Age=${maxAge}; ${secure}SameSite=Lax`
-
-      // Use replace instead of push to avoid login page in history
-      router.replace(redirectTo)
+      router.replace("/dashboard")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed"
       throw new Error(message)
