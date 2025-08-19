@@ -75,6 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("api_key", api_key)
       }
       setUser(userData)
+
+      const maxAge = 60 * 60 * 24 * 7 // 7 days
+      const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "Secure; " : ""
+      document.cookie = `token=${token}; Path=/; Max-Age=${maxAge}; ${secure}SameSite=Lax`
+
       router.replace("/dashboard")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed"
