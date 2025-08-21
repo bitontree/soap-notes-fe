@@ -10,40 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye } from "lucide-react"
 import Link from "next/link"
-import { soapApi } from "@/lib/api" 
+import { soapApi, getDashboardStats, type DashboardStats } from "@/lib/api" 
 import { useToast } from "@/hooks/use-toast"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 
-const stats = [
-  {
-    title: "Total SOAP Notes",
-    value: "247",
-    change: "+12%",
-    icon: FileText,
-    color: "text-blue-600",
-  },
-  {
-    title: "This Week",
-    value: "18",
-    change: "+5%",
-    icon: Calendar,
-    color: "text-green-600",
-  },
-  {
-    title: "Avg. Processing Time",
-    value: "2.3m",
-    change: "-8%",
-    icon: Clock,
-    color: "text-orange-600",
-  },
-  {
-    title: "Active Patients",
-    value: "89",
-    change: "+3%",
-    icon: Users,
-    color: "text-purple-600",
-  },
-]
 
 export default function DashboardPage() {
   const [recentNotes, setRecentNotes] = useState<any[]>([])
@@ -51,6 +21,8 @@ export default function DashboardPage() {
   const [selectedNote, setSelectedNote] = useState<any | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [isExportingPDF, setIsExportingPDF] = useState(false)
+  const [stats, setStats] = useState<DashboardStats>({ totalNotes: 0, thisWeek: 0, avgProcessingTimeMs: null, activePatients: 0, changes: {} })
+  const [isStatsLoading, setIsStatsLoading] = useState<boolean>(true)
 
 
   useEffect(() => {
@@ -67,6 +39,25 @@ export default function DashboardPage() {
       }
     }
     fetchNotes()
+  }, [toast])
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      setIsStatsLoading(true)
+      try {
+        const s = await getDashboardStats()
+        setStats(s)
+      } catch (error: any) {
+        toast({
+          title: "Error loading stats",
+          description: error.message || "Failed to fetch dashboard stats",
+          variant: "destructive",
+        })
+      } finally {
+        setIsStatsLoading(false)
+      }
+    }
+    fetchStats()
   }, [toast])
 
   // Formatting helpers (match history page behavior)
@@ -121,23 +112,65 @@ export default function DashboardPage() {
       <WelcomeBanner />
 
       <div className="p-6 space-y-6">
-        {/* Stats Grid */}
+        {/* Stats Grid (dynamic) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat) => (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">{stat.title}</CardTitle>
-                <stat.icon className={`h-4 w-4 ${stat.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-                <div className="flex items-center text-xs text-gray-600 mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  {stat.change} from last month
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total SOAP Notes</CardTitle>
+              <FileText className="h-4 w-4 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.totalNotes}</div>
+              <div className="flex items-center text-xs text-gray-600 mt-1">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {isStatsLoading ? '—' : (stats.changes?.totalNotesPct != null ? `${stats.changes.totalNotesPct > 0 ? '+' : ''}${stats.changes.totalNotesPct}% from last month` : 'Updated now')}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">This Week</CardTitle>
+              <Calendar className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.thisWeek}</div>
+              <div className="flex items-center text-xs text-gray-600 mt-1">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {isStatsLoading ? '—' : (stats.changes?.thisWeekPct != null ? `${stats.changes.thisWeekPct > 0 ? '+' : ''}${stats.changes.thisWeekPct}% from last week` : 'Last 7 days')}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Avg. Processing Time</CardTitle>
+              <Clock className="h-4 w-4 text-orange-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {isStatsLoading ? '—' : (stats.avgProcessingTimeMs == null ? '—' : `${(stats.avgProcessingTimeMs / 60000).toFixed(1)}m`)}
+              </div>
+              <div className="flex items-center text-xs text-gray-600 mt-1">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {isStatsLoading ? '—' : (stats.changes?.avgProcessingTimePct != null ? `${stats.changes.avgProcessingTimePct > 0 ? '+' : ''}${stats.changes.avgProcessingTimePct}% vs last month` : 'Based on recent records')}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Active Patients</CardTitle>
+              <Users className="h-4 w-4 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.activePatients}</div>
+              <div className="flex items-center text-xs text-gray-600 mt-1">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {isStatsLoading ? '—' : (stats.changes?.activePatientsPct != null ? `${stats.changes.activePatientsPct > 0 ? '+' : ''}${stats.changes.activePatientsPct}% from last month` : 'Patients in system')}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

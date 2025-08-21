@@ -578,3 +578,54 @@ export const soapApi = {
     }
   },
 };
+
+// ---------- Dashboard Stats (Single API with fallback) ----------
+
+export interface DashboardStats {
+  totalNotes: number;
+  thisWeek: number;
+  avgProcessingTimeMs: number | null;
+  activePatients: number;
+  changes?: {
+    totalNotesPct?: number | null;
+    thisWeekPct?: number | null;
+    avgProcessingTimePct?: number | null;
+    activePatientsPct?: number | null;
+  };
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  // Try dedicated endpoint if backend provides it
+  try {
+    const response = await apiRequest<DashboardStats>(`${API_BASE_URL}/dashboard-stats`, {
+      headers: {
+        ...getAuthHeaders(),
+        ...getApiKeyAuthHeaders(),
+      },
+    });
+    if (response.success && response.data) {
+      const data = response.data as any;
+      return {
+        totalNotes: Number(data.total_notes ?? data.totalNotes ?? 0),
+        thisWeek: Number(data.notes_last_7_days ?? data.thisWeek ?? 0),
+        avgProcessingTimeMs: data.avg_processing_ms ?? data.avgProcessingTimeMs ?? null,
+        activePatients: Number(data.active_patients ?? data.activePatients ?? 0),
+        changes: {
+          totalNotesPct: data.total_notes_change_pct ?? null,
+          thisWeekPct: data.notes_last_7_days_change_pct ?? null,
+          avgProcessingTimePct: data.avg_processing_ms_change_pct ?? null,
+          activePatientsPct: data.active_patients_change_pct ?? null,
+        },
+      };
+    }
+  } catch (e: any) {
+    console.error("Error in getDashboardStats:", e);
+    return {  
+      totalNotes: 0,
+      thisWeek: 0,
+      avgProcessingTimeMs: null,
+      activePatients: 0,
+    };
+  }
+  return { totalNotes: 0, thisWeek: 0, avgProcessingTimeMs: null, activePatients: 0 };
+}
