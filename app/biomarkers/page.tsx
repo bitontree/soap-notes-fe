@@ -451,6 +451,115 @@ export default function BiomarkersPage() {
     })
   }
 
+  // Render the biomarker reports table (and its empty/loading states)
+  const renderTable = () => {
+    if (!selectedPatient) {
+      return (
+        <Card>
+          <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
+            <div className="text-center">
+              <p className="text-lg font-medium mb-2">Select a Patient</p>
+              <p className="text-sm text-gray-500">Choose a patient above to view their biomarker reports</p>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    if (isLoading) {
+      return (
+        <Card>
+          <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading reports...
+          </CardContent>
+        </Card>
+      )
+    }
+
+    if (reports.length === 0) {
+      return (
+        <Card>
+          <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
+            <div className="text-center">
+              <p className="text-lg font-medium mb-2">No Reports Found</p>
+              <p className="text-sm text-gray-500">No biomarker reports found for the selected patient</p>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    if (sortedBiomarkers.length === 0) {
+      return (
+        <Card>
+          <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
+            <div className="text-center">
+              <p className="text-lg font-medium mb-2">No Biomarkers Found</p>
+              <p className="text-sm text-gray-500">The selected patient has no biomarker data in their reports</p>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    return (
+      <Card className="shadow-sm border border-gray-200">
+        <CardContent className="p-0">
+          <div className={cn("overflow-x-auto", isSidebarOpen ? "max-h-[calc(100vh-200px)]" : "max-h-[calc(100vh-200px)]")}>
+            <table className={cn("w-full border-collapse bg-white text-sm", isSidebarOpen ? "min-w-full" : "min-w-full")}> 
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-gray-50 border-b-2 border-gray-300">
+                  {/* First Column - Biomarker */}
+                  <th className={cn("text-left p-3 font-medium text-gray-900 border-r-2 border-gray-300 sticky left-0 bg-gray-50 z-20", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>Biomarker</th>
+                  {sortedDates.map((dateIso) => (
+                    <th key={dateIso} className={cn("text-center p-3 font-medium text-gray-900 border-r border-gray-300", isSidebarOpen ? "min-w-[100px]" : "min-w-[120px]")}>{formatDate(dateIso)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(filteredCategories).map((category) => (
+                  <React.Fragment key={`category-${category}`}>
+                    <tr className="bg-gray-25 border-b-2 border-gray-200">
+                      <td colSpan={sortedDates.length + 1} className="p-2 font-medium text-gray-700 text-xs uppercase tracking-wide">{category as string}</td>
+                    </tr>
+                    {sortedBiomarkers.filter((name) => (categoryToNames.get(category as string)?.has(name))).map((name) => (
+                      <tr key={`${category}-${name}`} className="border-b border-gray-200 hover:bg-gray-25">
+                        <td className={cn("p-3 border-r-2 border-gray-300 sticky left-0 bg-white z-10", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>
+                          <div className="font-medium text-gray-900 text-sm">{name}</div>
+                          {(() => {
+                            const rr = nameRefRange.get(`${name}|||${category}`)
+                            return rr ? <div className="text-xs text-gray-500 mt-1">Normal: {rr}</div> : null
+                          })()}
+                        </td>
+                        {sortedDates.map((dateIso) => {
+                          const key = `${name}|||${category}`
+                          const cell = dateToCells.get(dateIso)?.get(key)
+                          const rr = nameRefRange.get(key)
+                          return (
+                            <td key={`${name}-${dateIso}`} className={cn("p-3 text-center border-r border-gray-200", isSidebarOpen ? "min-w-[100px]" : "min-w-[120px]", getCellBackgroundColor(cell, rr))}>
+                              {cell && cell.value !== "" ? (
+                                <div className="font-medium text-gray-900">
+                                  {cell.value}
+                                  {cell.unit && <span className="text-gray-600 ml-1">{cell.unit}</span>}
+                                </div>
+                              ) : (
+                                <span></span>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div>
       <Header title="Biomarkers" description="Explore biomarker measurements over time" />
@@ -538,95 +647,7 @@ export default function BiomarkersPage() {
             )}
 
             {/* Table - Only show if a patient is selected */}
-            {!selectedPatient ? (
-              <Card>
-                <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
-                  <div className="text-center">
-                    <p className="text-lg font-medium mb-2">Select a Patient</p>
-                    <p className="text-sm text-gray-500">Choose a patient above to view their biomarker reports</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : isLoading ? (
-              <Card>
-                <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
-                  <Loader2 className="h-5 w-5 animate-spin" /> Loading reports...
-                </CardContent>
-              </Card>
-            ) : reports.length === 0 ? (
-              <Card>
-                <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
-                  <div className="text-center">
-                    <p className="text-lg font-medium mb-2">No Reports Found</p>
-                    <p className="text-sm text-gray-500">No biomarker reports found for the selected patient</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : sortedBiomarkers.length === 0 ? (
-              <Card>
-                <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
-                  <div className="text-center">
-                    <p className="text-lg font-medium mb-2">No Biomarkers Found</p>
-                    <p className="text-sm text-gray-500">The selected patient has no biomarker data in their reports</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="shadow-sm border border-gray-200">
-                <CardContent className="p-0">
-                  <div className={cn("overflow-x-auto", isSidebarOpen ? "max-h-[calc(100vh-200px)]" : "max-h-[calc(100vh-200px)]")}>
-                    <table className={cn("w-full border-collapse bg-white text-sm", isSidebarOpen ? "min-w-full" : "min-w-full")}>
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gray-50 border-b-2 border-gray-300">
-                          {/* First Column - Biomarker */}
-                          <th className={cn("text-left p-3 font-medium text-gray-900 border-r-2 border-gray-300 sticky left-0 bg-gray-50 z-20", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>Biomarker</th>
-                          {sortedDates.map((dateIso) => (
-                            <th key={dateIso} className={cn("text-center p-3 font-medium text-gray-900 border-r border-gray-300", isSidebarOpen ? "min-w-[100px]" : "min-w-[120px]")}>{formatDate(dateIso)}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Array.from(filteredCategories).map((category) => (
-                          <React.Fragment key={`category-${category}`}>
-                            <tr className="bg-gray-25 border-b-2 border-gray-200">
-                              <td colSpan={sortedDates.length + 1} className="p-2 font-medium text-gray-700 text-xs uppercase tracking-wide">{category as string}</td>
-                            </tr>
-                            {sortedBiomarkers.filter((name) => (categoryToNames.get(category as string)?.has(name))).map((name) => (
-                              <tr key={`${category}-${name}`} className="border-b border-gray-200 hover:bg-gray-25">
-                                <td className={cn("p-3 border-r-2 border-gray-300 sticky left-0 bg-white z-10", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>
-                                  <div className="font-medium text-gray-900 text-sm">{name}</div>
-                                  {(() => {
-                                    const rr = nameRefRange.get(`${name}|||${category}`)
-                                    return rr ? <div className="text-xs text-gray-500 mt-1">Normal: {rr}</div> : null
-                                  })()}
-                                </td>
-                                {sortedDates.map((dateIso) => {
-                                  const key = `${name}|||${category}`
-                                  const cell = dateToCells.get(dateIso)?.get(key)
-                                  const rr = nameRefRange.get(key)
-                                  return (
-                                    <td key={`${name}-${dateIso}`} className={cn("p-3 text-center border-r border-gray-200", isSidebarOpen ? "min-w-[100px]" : "min-w-[120px]", getCellBackgroundColor(cell, rr))}>
-                                      {cell && cell.value !== "" ? (
-                                        <div className="font-medium text-gray-900">
-                                          {cell.value}
-                                          {cell.unit && <span className="text-gray-600 ml-1">{cell.unit}</span>}
-                                        </div>
-                                      ) : (
-                                        <span></span>
-                                      )}
-                                    </td>
-                                  )
-                                })}
-                              </tr>
-                            ))}
-                          </React.Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {renderTable()}
           </div>
         </div>
 
