@@ -7,6 +7,7 @@ const protectedRoutes = [
   '/generate',
   '/history',
   '/ehr',
+  '/biomarkers',
   '/settings'
 ]
 

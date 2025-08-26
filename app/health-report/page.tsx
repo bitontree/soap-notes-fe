@@ -19,8 +19,9 @@ import {
   User,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { uploadHealthReportApi } from "@/lib/api"
+import { parseHealthReportApi } from "@/lib/api"
 import PatientSelector from "@/components/patient-selector"
+import { useAuth } from "@/contexts/auth-context"
 
 type UploadResult = any
 
@@ -32,6 +33,7 @@ export default function HealthReportPage() {
   const [progress, setProgress] = useState(0)
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
   const { toast } = useToast()
+  const { user } = useAuth()
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -101,10 +103,10 @@ export default function HealthReportPage() {
         notes,
       }
 
-      const result = await uploadHealthReportApi(
+      const result = await parseHealthReportApi(
         patientInfo.patient_id,
+        user?.id || "", // userId parameter
         file,
-        patientInfo,
         (percent) => setProgress(percent)
       )
 

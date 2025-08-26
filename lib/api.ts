@@ -400,6 +400,7 @@ export interface GenerateSoapNoteResponse {
 // ---------- Health Report Parse API (NEW) ----------
 
 export async function parseHealthReportApi(
+  patientId: string,
   userId: string,
   file: File,
   onUploadProgress?: (percent: number) => void
@@ -415,7 +416,7 @@ export async function parseHealthReportApi(
   formData.append("file", file);
 
   const response = await axios.post(
-    `${API_BASE_URL}/healthreport/parse`,
+    `${API_BASE_URL}/healthreport/parse/${patientId}`,
     formData,
     {
       headers: {
@@ -578,6 +579,65 @@ export const soapApi = {
     }
   },
 };
+
+// ---------- Reports API (Biomarkers) ----------
+
+export interface BiomarkerReportResponse {
+  reports: Array<{
+    report_id: string;
+    patient_id?: string;
+    patient_info?: any;
+    original_filename?: string;
+    test_date?: string;
+    report_name?: string;
+    test_category?: string;
+    biomarkers: Array<{
+      name: string;
+      result_value: string;
+      unit?: string | null;
+      reference_range?: string | null;
+      status?: string | null;
+      category?: string | null;
+      source_page?: number;
+    }>;
+    biomarkers_count?: number;
+    provider_used?: string;
+    created_at?: string;
+    pdf_key?: string;
+    bucket?: string;
+  }>;
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_items: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
+}
+
+export async function fetchReports(params: {
+  patient_name?: string;
+  test_date_from?: string;
+  test_date_to?: string;
+  created_date_from?: string;
+  created_date_to?: string;
+  report_type?: string;
+  page?: number;
+  limit?: number;
+} = {}): Promise<BiomarkerReportResponse> {
+  const response = await apiRequest<BiomarkerReportResponse>("/healthreport/get_reports", {
+    params,
+    headers: {
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    },
+  })
+  if (!response.success) {
+    throw new Error(response.message || "Failed to fetch reports")
+  }
+  return response.data as BiomarkerReportResponse
+}
 
 // ---------- Dashboard Stats (Single API with fallback) ----------
 

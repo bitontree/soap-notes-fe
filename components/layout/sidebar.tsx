@@ -14,14 +14,16 @@ import {
   LogOut,
   Stethoscope,
   Upload,      
+  Activity,
 } from "lucide-react"
 
 // Add your new navigation item here:
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Generate SOAP", href: "/generate", icon: FileText },
-  { name: "History", href: "/history", icon: History },
   { name: "EHR Integration", href: "/ehr", icon: Database },
+  { name: "Biomarkers", href: "/biomarkers", icon: Activity },
+  { name: "History", href: "/history", icon: History },
   { name: "Upload Health Report", href: "/health-report", icon: Upload }, 
   { name: "Settings", href: "/settings", icon: Settings },
 ]
