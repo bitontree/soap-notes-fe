@@ -132,12 +132,25 @@ export default function BiomarkersPage() {
 
       setIsLoadingSoap(true)
       try {
-        // Fetch SOAP notes for the patient
-        const notesData = await soapApi.getNotes(1, 10) // Get first 10 notes
-        const patientNotes = notesData.soap_notes?.filter((note: any) => 
+        // Fetch SOAP notes with pagination to avoid missing later entries
+        const PAGE_SIZE = 50
+        const MAX_PAGES = 20 // safety cap (1000 notes)
+        let page = 1
+        const allNotes: any[] = []
+        // Fetch pages until exhausted or safety cap reached
+        // This keeps the logic simple while ensuring we don't miss recent notes
+        while (page <= MAX_PAGES) {
+          const pageData = await soapApi.getNotes(page, PAGE_SIZE)
+          const current = pageData?.soap_notes || []
+          allNotes.push(...current)
+          if (current.length < PAGE_SIZE) break
+          page += 1
+        }
+
+        const patientNotes = allNotes.filter((note: any) => 
           note.patient_name?.toLowerCase().includes(selectedPatient.firstname.toLowerCase()) ||
           note.patient_name?.toLowerCase().includes(selectedPatient.lastname.toLowerCase())
-        ) || []
+        )
         
         if (patientNotes.length > 0) {
           // Sort by created_at and get the most recent
@@ -331,20 +344,30 @@ export default function BiomarkersPage() {
     const normalizeName = (s?: string | null) => (s || "").trim().replace(/\s*-[\s]*/g, "-").replace(/\s+/g, " ")
     const normalizeCategory = (s?: string | null) => ((s || "Unspecified").trim() || "Unspecified")
 
+    const hasMeaningfulValue = (v: unknown) => {
+      if (v === null || v === undefined) return false
+      const s = String(v).trim()
+      return s.length > 0 // treats "0", "Negative", "No signal" as valid
+    }
+
     for (const rpt of filteredReports) {
       const iso = normalizeTestDate(rpt.test_date, (rpt.created_at || "").split("T")[0])
       if (!iso) continue
-      dateSet.add(iso)
       if (!dateToCells.has(iso)) dateToCells.set(iso, new Map())
       const cellMap = dateToCells.get(iso)!
       const createdAtMs = rpt.created_at ? Date.parse(rpt.created_at) || 0 : 0
 
+      let addedForThisReport = 0
       for (const bm of rpt.biomarkers || []) {
         const nName = normalizeName(bm.name)
         const nCat = normalizeCategory(bm.category)
         if (!nName) continue
         if (!categoryToNames.has(nCat)) categoryToNames.set(nCat, new Set())
         categoryToNames.get(nCat)!.add(nName)
+
+        // Only create a cell if we have some meaningful content
+        const hasContent = hasMeaningfulValue(bm.result_value) || hasMeaningfulValue(bm.unit) || hasMeaningfulValue(bm.status) || hasMeaningfulValue(bm.reference_range)
+        if (!hasContent) continue
 
         const key = `${nName}|||${nCat}`
         const nextCell: AggregatedCell = {
@@ -357,10 +380,15 @@ export default function BiomarkersPage() {
         const prev = cellMap.get(key)
         if (!prev || nextCell.createdAtMs >= prev.createdAtMs) {
           cellMap.set(key, nextCell)
+          addedForThisReport += 1
         }
         if (!nameRefRange.has(key) && bm.reference_range) {
           nameRefRange.set(key, bm.reference_range)
         }
+      }
+
+      if (addedForThisReport > 0) {
+        dateSet.add(iso)
       }
     }
 
@@ -455,7 +483,7 @@ export default function BiomarkersPage() {
   const renderTable = () => {
     if (!selectedPatient) {
       return (
-        <Card>
+        <Card className="min-h-[400px]">
           <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
             <div className="text-center">
               <p className="text-lg font-medium mb-2">Select a Patient</p>
@@ -468,7 +496,7 @@ export default function BiomarkersPage() {
 
     if (isLoading) {
       return (
-        <Card>
+        <Card className="min-h-[400px]">
           <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
             <Loader2 className="h-5 w-5 animate-spin" /> Loading reports...
           </CardContent>
@@ -478,7 +506,7 @@ export default function BiomarkersPage() {
 
     if (reports.length === 0) {
       return (
-        <Card>
+        <Card className="min-h-[400px]">
           <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
             <div className="text-center">
               <p className="text-lg font-medium mb-2">No Reports Found</p>
@@ -491,7 +519,7 @@ export default function BiomarkersPage() {
 
     if (sortedBiomarkers.length === 0) {
       return (
-        <Card>
+        <Card className="min-h-[400px]">
           <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
             <div className="text-center">
               <p className="text-lg font-medium mb-2">No Biomarkers Found</p>
@@ -505,12 +533,12 @@ export default function BiomarkersPage() {
     return (
       <Card className="shadow-sm border border-gray-200">
         <CardContent className="p-0">
-          <div className={cn("overflow-x-auto", isSidebarOpen ? "max-h-[calc(100vh-200px)]" : "max-h-[calc(100vh-200px)]")}>
-            <table className={cn("w-full border-collapse bg-white text-sm", isSidebarOpen ? "min-w-full" : "min-w-full")}> 
-              <thead className="sticky top-0 z-10">
+          <div className={cn("w-full max-w-full overflow-x-auto", isSidebarOpen ? "max-h-[calc(100vh-200px)]" : "max-h-[calc(100vh-200px)]")}>
+            <table className={cn("w-full border-separate border-spacing-0 bg-white text-sm", isSidebarOpen ? "min-w-full" : "min-w-full")}> 
+              <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-50 border-b-2 border-gray-300">
                   {/* First Column - Biomarker */}
-                  <th className={cn("text-left p-3 font-medium text-gray-900 border-r-2 border-gray-300 sticky left-0 bg-gray-50 z-20", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>Biomarker</th>
+                  <th className={cn("text-left p-3 font-medium text-gray-900 border-r-2 border-gray-300 sticky left-0 bg-gray-50 z-30", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>Biomarker</th>
                   {sortedDates.map((dateIso) => (
                     <th key={dateIso} className={cn("text-center p-3 font-medium text-gray-900 border-r border-gray-300", isSidebarOpen ? "min-w-[100px]" : "min-w-[120px]")}>{formatDate(dateIso)}</th>
                   ))}
@@ -520,11 +548,14 @@ export default function BiomarkersPage() {
                 {Array.from(filteredCategories).map((category) => (
                   <React.Fragment key={`category-${category}`}>
                     <tr className="bg-gray-25 border-b-2 border-gray-200">
-                      <td colSpan={sortedDates.length + 1} className="p-2 font-medium text-gray-700 text-xs uppercase tracking-wide">{category as string}</td>
+                      {/* Sticky category label in first column */}
+                      <td className={cn("p-2 font-medium text-gray-700 text-xs uppercase tracking-wide sticky left-0 bg-white z-10 border-r-2 border-gray-300", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>{category as string}</td>
+                      {/* Spacer cell spanning all date columns to preserve layout */}
+                      <td colSpan={sortedDates.length} className="p-0"></td>
                     </tr>
                     {sortedBiomarkers.filter((name) => (categoryToNames.get(category as string)?.has(name))).map((name) => (
                       <tr key={`${category}-${name}`} className="border-b border-gray-200 hover:bg-gray-25">
-                        <td className={cn("p-3 border-r-2 border-gray-300 sticky left-0 bg-white z-10", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>
+                        <td className={cn("p-3 border-r-2 border-b border-gray-300 sticky left-0 bg-white z-10", isSidebarOpen ? "min-w-[140px]" : "min-w-[180px]")}>
                           <div className="font-medium text-gray-900 text-sm">{name}</div>
                           {(() => {
                             const rr = nameRefRange.get(`${name}|||${category}`)
@@ -536,7 +567,7 @@ export default function BiomarkersPage() {
                           const cell = dateToCells.get(dateIso)?.get(key)
                           const rr = nameRefRange.get(key)
                           return (
-                            <td key={`${name}-${dateIso}`} className={cn("p-3 text-center border-r border-gray-200", isSidebarOpen ? "min-w-[100px]" : "min-w-[120px]", getCellBackgroundColor(cell, rr))}>
+                            <td key={`${name}-${dateIso}`} className={cn("p-3 text-center border-r border-b min-w-[120px] border-gray-200", getCellBackgroundColor(cell, rr))}>
                               {cell && cell.value !== "" ? (
                                 <div className="font-medium text-gray-900">
                                   {cell.value}
@@ -565,10 +596,10 @@ export default function BiomarkersPage() {
       <Header title="Biomarkers" description="Explore biomarker measurements over time" />
       
       {/* Main Layout with Sidebar */}
-      <div className="flex h-[calc(100vh-120px)] flex-1 overflow-x-hidden">
+      <div className="flex h-[calc(100vh-120px)] flex-1 overflow-hidden">
         {/* Main Content Area */}
-        <div className={cn("flex-1 transition-all duration-300", isSidebarOpen ? "mr-4" : "mr-0")}>
-          <div className="space-y-6 w-full p-6">
+        <div className={cn("flex-1 min-w-0 transition-all duration-300 overflow-y-auto scrollbar-hide", isSidebarOpen ? "mr-4" : "mr-0")}>
+          <div className="space-y-6 w-full p-6 min-h-[calc(100vh-200px)]">
             {/* Patient Selection */}
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
               <div className="flex items-center gap-4">
@@ -598,8 +629,8 @@ export default function BiomarkersPage() {
             {/* Filters - Only show if a patient is selected */}
             {selectedPatient && (
               <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+                <div className={cn(isSidebarOpen ? "grid grid-cols-1 gap-3" : "flex flex-wrap items-center justify-between gap-3")}> 
+                  <div className={cn("flex items-center gap-4", isSidebarOpen ? "col-span-1 w-full flex-nowrap" : "flex-wrap min-w-0")}> 
                     <label className="text-sm font-medium text-gray-700">Filter:</label>
                     <Select value={selectedTestType} onValueChange={setSelectedTestType}>
                       <SelectTrigger className="w-48 h-9 text-sm">
@@ -613,23 +644,23 @@ export default function BiomarkersPage() {
                       </SelectContent>
                     </Select>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
                       <span className="text-sm text-gray-600">Date Range:</span>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" className={cn("w-[280px] justify-start text-left font-normal h-9 text-sm", !dateRange.from && !dateRange.to && "text-muted-foreground") }>
+                          <Button variant="outline" className={cn(isSidebarOpen ? "w-full" : "w-[280px] max-w-full", "justify-start text-left font-normal h-9 text-sm", !dateRange.from && !dateRange.to && "text-muted-foreground") }>
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {dateRange.from ? (dateRange.to ? (<>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Pick a date range</span>)}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar initialFocus mode="range" defaultMonth={dateRange.from} selected={dateRange} onSelect={(range: any) => setDateRange({ from: range?.from, to: range?.to })} numberOfMonths={2} />
+                        <PopoverContent className="w-auto p-0" align="start" side="bottom" sideOffset={4} avoidCollisions={true}>
+                          <Calendar initialFocus mode="range" defaultMonth={dateRange.from} selected={dateRange} onSelect={(range: any) => setDateRange({ from: range?.from, to: range?.to })} numberOfMonths={isSidebarOpen ? 1 : 2} disabled={(date) => date > new Date()} />
                           <div className="p-3 border-t"><Button variant="outline" size="sm" onClick={() => setDateRange({ from: undefined, to: undefined })} className="w-full">Clear dates</Button></div>
                         </PopoverContent>
                       </Popover>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className={cn("flex gap-2 shrink-0", isSidebarOpen && "col-span-1 order-2 justify-start place-self-start w-full")}> 
                     <Button 
                       variant="outline" 
                       size="sm" 
