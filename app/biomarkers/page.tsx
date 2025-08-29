@@ -483,7 +483,7 @@ export default function BiomarkersPage() {
   const renderTable = () => {
     if (!selectedPatient) {
       return (
-        <Card>
+        <Card className="min-h-[400px]">
           <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
             <div className="text-center">
               <p className="text-lg font-medium mb-2">Select a Patient</p>
@@ -496,7 +496,7 @@ export default function BiomarkersPage() {
 
     if (isLoading) {
       return (
-        <Card>
+        <Card className="min-h-[400px]">
           <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
             <Loader2 className="h-5 w-5 animate-spin" /> Loading reports...
           </CardContent>
@@ -506,7 +506,7 @@ export default function BiomarkersPage() {
 
     if (reports.length === 0) {
       return (
-        <Card>
+        <Card className="min-h-[400px]">
           <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
             <div className="text-center">
               <p className="text-lg font-medium mb-2">No Reports Found</p>
@@ -519,7 +519,7 @@ export default function BiomarkersPage() {
 
     if (sortedBiomarkers.length === 0) {
       return (
-        <Card>
+        <Card className="min-h-[400px]">
           <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
             <div className="text-center">
               <p className="text-lg font-medium mb-2">No Biomarkers Found</p>
@@ -599,7 +599,7 @@ export default function BiomarkersPage() {
       <div className="flex h-[calc(100vh-120px)] flex-1 overflow-hidden">
         {/* Main Content Area */}
         <div className={cn("flex-1 min-w-0 transition-all duration-300 overflow-y-auto scrollbar-hide", isSidebarOpen ? "mr-4" : "mr-0")}>
-          <div className="space-y-6 w-full p-6">
+          <div className="space-y-6 w-full p-6 min-h-[calc(100vh-200px)]">
             {/* Patient Selection */}
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
               <div className="flex items-center gap-4">
@@ -653,8 +653,8 @@ export default function BiomarkersPage() {
                             {dateRange.from ? (dateRange.to ? (<>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Pick a date range</span>)}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar initialFocus mode="range" defaultMonth={dateRange.from} selected={dateRange} onSelect={(range: any) => setDateRange({ from: range?.from, to: range?.to })} numberOfMonths={2} />
+                        <PopoverContent className="w-auto p-0" align="start" side="bottom" sideOffset={4} avoidCollisions={true}>
+                          <Calendar initialFocus mode="range" defaultMonth={dateRange.from} selected={dateRange} onSelect={(range: any) => setDateRange({ from: range?.from, to: range?.to })} numberOfMonths={isSidebarOpen ? 1 : 2} disabled={(date) => date > new Date()} />
                           <div className="p-3 border-t"><Button variant="outline" size="sm" onClick={() => setDateRange({ from: undefined, to: undefined })} className="w-full">Clear dates</Button></div>
                         </PopoverContent>
                       </Popover>
