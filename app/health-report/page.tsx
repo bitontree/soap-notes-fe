@@ -111,13 +111,18 @@ export default function HealthReportPage() {
       )
 
       setProgress(100)
-      setUploadResult(result)
 
       // ✅ Updated toast message
       toast({
         title: "Health Report Uploaded and parsed",
         description: `Health report for ${patientInfo.patient_name || "Patient"} has been successfully uploaded and parsed.`,
       })
+
+      // Keep the user on the same page (no in-page result view)
+      // Optionally reset the form after a short delay
+      setTimeout(() => {
+        resetForm()
+      }, 500)
     } catch (error: any) {
       toast({
         title: "Upload Failed",
@@ -138,8 +143,7 @@ export default function HealthReportPage() {
       />
 
       <div className="p-6 max-w-6xl mx-auto space-y-6">
-        {!uploadResult ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* PDF Upload */}
             <Card>
               <CardHeader>
@@ -211,101 +215,25 @@ export default function HealthReportPage() {
               </Card>
             </div>
           </div>
-        ) : (
-          // Upload result
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Upload Successful</h2>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={exportDummyPDF}>
-                  <Download className="mr-2 h-4 w-4" /> Export PDF
-                </Button>
-                <Button variant="outline" onClick={() => copyToClipboard(JSON.stringify(uploadResult, null, 2))}>
-                  <Copy className="mr-2 h-4 w-4" /> Copy Info
-                </Button>
-                <Button variant="ghost" onClick={resetForm}>
-                  Upload Another
-                </Button>
-              </div>
-            </div>
 
-            <Tabs defaultValue="file" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="file">File Info</TabsTrigger>
-                <TabsTrigger value="patient">Patient Info</TabsTrigger>
-                <TabsTrigger value="notes">Notes</TabsTrigger>
-                <TabsTrigger value="report">Report</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="file">
-                <Card>
-                  <CardHeader><CardTitle>File Information</CardTitle></CardHeader>
-                  <CardContent>
-                    <p><strong>Filename:</strong> {uploadResult.filename}</p>
-                    <p><strong>Saved As:</strong> {uploadResult.saved_as}</p>
-                    <p><strong>Size (bytes):</strong> {uploadResult.size}</p>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="patient">
-                <Card>
-                  <CardHeader><CardTitle>Patient Information</CardTitle></CardHeader>
-                  <CardContent>
-                    <p><strong>ID:</strong> {selectedPatient?.id || selectedPatient?._id || "N/A"}</p>
-                    <p><strong>Name:</strong> {`${selectedPatient?.firstname ?? ""} ${selectedPatient?.lastname ?? ""}`.trim() || "N/A"}</p>
-                    <p><strong>Age:</strong> {selectedPatient?.age ?? "N/A"}</p>
-                    <p><strong>Gender:</strong> {selectedPatient?.gender || "N/A"}</p>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="notes">
-                <Card>
-                  <CardHeader><CardTitle>Additional Notes</CardTitle></CardHeader>
-                  <CardContent>
-                    <pre className="whitespace-pre-wrap">{notes || "No additional notes"}</pre>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="report">
-                <Card>
-                  <CardHeader><CardTitle>Parsed Report</CardTitle></CardHeader>
-                  <CardContent>
-                    <pre className="whitespace-pre-wrap text-sm">
-                      {uploadResult ? JSON.stringify(uploadResult, null, 2) : "No report data"}
-                    </pre>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
-
-        {!uploadResult && (
-          <div className="flex justify-center pt-6">
-            <Button
-              onClick={handleUpload}
-              size="lg"
-              disabled={!file || !selectedPatient || isUploading}
-              className="px-8"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-5 w-5" /> Upload Health Report
-                </>
-              )}
-            </Button>
-          </div>
-        )}
+        <div className="flex justify-center pt-6">
+          <Button
+            onClick={handleUpload}
+            size="lg"
+            disabled={!file || !selectedPatient || isUploading}
+            className="px-8"
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Uploading...
+              </>
+            ) : (
+              <>
+                <Upload className="mr-2 h-5 w-5" /> Upload Health Report
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   )
