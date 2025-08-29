@@ -638,7 +638,7 @@ export interface BiomarkerReportResponse {
 }
 
 export async function fetchReports(params: {
-  patient_name?: string;
+  patient_id?: string;
   test_date_from?: string;
   test_date_to?: string;
   created_date_from?: string;

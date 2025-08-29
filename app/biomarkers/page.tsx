@@ -180,9 +180,8 @@ export default function BiomarkersPage() {
 
     setIsLoading(true)
     try {
-      // Use the patient's first name for the API call as the backend expects
-      const patientName = patient.firstname.toLowerCase()
-      const res = await fetchReports({ page: 1, limit: 100, patient_name: patientName })
+      const patientId = patient.id
+      const res = await fetchReports({ page: 1, limit: 100, patient_id: patientId })
       setReports((res.reports as any) || [])
     } catch (e: any) {
       toast({ title: "Failed to load reports", description: e?.message || "Please try again later", variant: "destructive" })
