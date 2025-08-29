@@ -248,6 +248,27 @@ export const authApi = {
     };
   },
 
+  async updateProfile(profileData: {
+    firstname: string;
+    lastname: string;
+    email: string;
+    phone?: string;
+    specialty?: string;
+  }): Promise<any> {
+    const response = await apiRequest("/update-profile-information", {
+      method: "PUT",
+      data: profileData,
+      headers: {
+        ...getAuthHeaders(),
+        ...getApiKeyAuthHeaders(),
+      },
+    });
+    if (!response.success) {
+      throw new ApiError(500, response.message || "Failed to update profile");
+    }
+    return response.data;
+  },
+
   async logout(): Promise<void> {
     const token = localStorage.getItem("token");
     if (!token) return;
