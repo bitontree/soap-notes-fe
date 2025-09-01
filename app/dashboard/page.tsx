@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { Header } from "@/components/layout/header"
-import { WelcomeBanner } from "@/components/welcome-banner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -109,8 +108,6 @@ export default function DashboardPage() {
   return (
     <div>
       <Header title="Dashboard" description="Overview of your medical documentation activity" />
-      <WelcomeBanner />
-
       <div className="p-6 space-y-6">
         {/* Stats Grid (dynamic) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

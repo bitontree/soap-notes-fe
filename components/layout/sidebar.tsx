@@ -67,7 +67,7 @@ export function Sidebar() {
             <span className="text-sm font-medium text-blue-600">{user?.firstname?.charAt(0) || "U"}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{user?.firstname && user?.lastname ? `${user.firstname} ${user.lastname}` : "User"}</p>
+            <p className="text-sm font-medium text-gray-900 truncate">{user?.firstname ? `${user.firstname} ${user.lastname}` : "User"}</p>
             <p className="text-xs text-gray-500 truncate">{user?.email || "user@example.com"}</p>
           </div>
         </div>
