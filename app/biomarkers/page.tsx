@@ -29,7 +29,8 @@ const scrollbarHideStyles = `
 `
 
 interface PatientInfo { name?: string; gender?: string }
-interface Biomarker { name: string; result_value: string; unit?: string | null; reference_range?: string | null; status?: string | null; category?: string | null }
+interface BiomarkerReading { timestamp: string; result_value: string; unit?: string | null; status?: string | null }
+interface Biomarker { name: string; result_value?: string; unit?: string | null; reference_range?: string | null; status?: string | null; category?: string | null; readings?: BiomarkerReading[] }
 interface Report { report_id: string; patient_info?: PatientInfo; test_date: string; test_category: string; biomarkers: Biomarker[]; created_at?: string }
 
 interface Patient {
@@ -69,6 +70,7 @@ type AggregatedCell = {
   status?: string | null
   reference_range?: string | null
   createdAtMs: number
+  series?: { t: number; v: number; rawTime: string }[]
 }
 
 export default function BiomarkersPage() {
@@ -85,6 +87,14 @@ export default function BiomarkersPage() {
   const [isLoadingSoap, setIsLoadingSoap] = useState(false)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [selectedNote, setSelectedNote] = useState<SOAPNote | null>(null)
+  const [trendView, setTrendView] = useState<{
+    name: string
+    category: string
+    dateIso: string
+    unit?: string | null
+    series: { t: number; v: number; rawTime: string }[]
+  } | null>(null)
+  const [trendHover, setTrendHover] = useState<{ x: number; y: number; t: number; v: number } | null>(null)
 
   // Inject custom CSS for hiding scrollbars
   useEffect(() => {
@@ -205,6 +215,7 @@ export default function BiomarkersPage() {
       raw,
       raw.replace(/\./g, "/"),
       raw.replace(/-/g, "/"),
+      raw.replace(/_/g, "/"),
       raw.replace(/\s+/g, " "),
       raw.replace(/[,]/g, ""),
     ]))
@@ -290,6 +301,7 @@ export default function BiomarkersPage() {
 
   const getCellBackgroundColor = (cell?: AggregatedCell | null, refRange?: string | null) => {
     if (!cell) return "bg-gray-100"
+    if (cell.series && cell.series.length > 0) return "bg-gray-50" // keep neutral for trend cells
     const value = parseFirstNumber(cell.value)
     if (value == null) return "bg-gray-100"
     const rng = parseRange(cell.reference_range || refRange)
@@ -350,10 +362,7 @@ export default function BiomarkersPage() {
     }
 
     for (const rpt of filteredReports) {
-      const iso = normalizeTestDate(rpt.test_date, (rpt.created_at || "").split("T")[0])
-      if (!iso) continue
-      if (!dateToCells.has(iso)) dateToCells.set(iso, new Map())
-      const cellMap = dateToCells.get(iso)!
+      const reportIso = normalizeTestDate(rpt.test_date, (rpt.created_at || "").split("T")[0])
       const createdAtMs = rpt.created_at ? Date.parse(rpt.created_at) || 0 : 0
 
       let addedForThisReport = 0
@@ -364,11 +373,54 @@ export default function BiomarkersPage() {
         if (!categoryToNames.has(nCat)) categoryToNames.set(nCat, new Set())
         categoryToNames.get(nCat)!.add(nName)
 
-        // Only create a cell if we have some meaningful content
+        const key = `${nName}|||${nCat}`
+
+        // Handle continuous readings if present
+        if (Array.isArray(bm.readings) && bm.readings.length > 0) {
+          // Bucket readings by their own date (yyyy-MM-dd)
+          const buckets = new Map<string, { t: number; v: number; rawTime: string }[]>()
+          for (const rd of bm.readings) {
+            if (!rd?.timestamp || rd.result_value == null) continue
+            const t = Date.parse(rd.timestamp)
+            if (isNaN(t)) continue
+            const v = Number(String(rd.result_value).replace(/,/g, ""))
+            if (isNaN(v)) continue
+            const dIso = format(new Date(t), "yyyy-MM-dd")
+            if (!buckets.has(dIso)) buckets.set(dIso, [])
+            buckets.get(dIso)!.push({ t, v, rawTime: rd.timestamp })
+          }
+          // Sort each bucket by time and store as series in cells
+          for (const [dIso, arr] of buckets.entries()) {
+            if (!dateToCells.has(dIso)) dateToCells.set(dIso, new Map())
+            const cellMap = dateToCells.get(dIso)!
+            arr.sort((a, b) => a.t - b.t)
+            const prev = cellMap.get(key)
+            const nextCell: AggregatedCell = {
+              value: "", // trend only in table cell
+              unit: bm.unit ?? (bm.readings[0]?.unit ?? null),
+              status: bm.status ?? null,
+              reference_range: bm.reference_range ?? undefined,
+              createdAtMs,
+              series: arr,
+            }
+            if (!prev || nextCell.createdAtMs >= prev.createdAtMs) {
+              cellMap.set(key, nextCell)
+              addedForThisReport += 1
+            }
+            if (!nameRefRange.has(key) && bm.reference_range) nameRefRange.set(key, bm.reference_range)
+            dateSet.add(dIso)
+          }
+          continue
+        }
+
+        // Fallback: discrete value handling (standard reports)
+        const iso = reportIso
+        if (!iso) continue
+        if (!dateToCells.has(iso)) dateToCells.set(iso, new Map())
+        const cellMap = dateToCells.get(iso)!
+
         const hasContent = hasMeaningfulValue(bm.result_value) || hasMeaningfulValue(bm.unit) || hasMeaningfulValue(bm.status) || hasMeaningfulValue(bm.reference_range)
         if (!hasContent) continue
-
-        const key = `${nName}|||${nCat}`
         const nextCell: AggregatedCell = {
           value: String(bm.result_value ?? ""),
           unit: bm.unit ?? null,
@@ -381,12 +433,7 @@ export default function BiomarkersPage() {
           cellMap.set(key, nextCell)
           addedForThisReport += 1
         }
-        if (!nameRefRange.has(key) && bm.reference_range) {
-          nameRefRange.set(key, bm.reference_range)
-        }
-      }
-
-      if (addedForThisReport > 0) {
+        if (!nameRefRange.has(key) && bm.reference_range) nameRefRange.set(key, bm.reference_range)
         dateSet.add(iso)
       }
     }
@@ -478,6 +525,59 @@ export default function BiomarkersPage() {
     })
   }
 
+  // Loading skeletons for table and tiny sparklines
+  const SparklineSkeleton = () => (
+    <svg width={100} height={20} className="opacity-60 animate-pulse">
+      <defs>
+        <linearGradient id="sk-grad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#e5e7eb" />
+          <stop offset="50%" stopColor="#f3f4f6" />
+          <stop offset="100%" stopColor="#e5e7eb" />
+        </linearGradient>
+      </defs>
+      <path d="M5,15 L25,5 L45,10 L65,6 L85,12" stroke="url(#sk-grad)" strokeWidth="3" fill="none" strokeLinecap="round" />
+    </svg>
+  )
+
+  const renderSkeletonTable = () => {
+    const placeholderRows = Array.from({ length: 8 })
+    const placeholderCols = Array.from({ length: 6 }) // biomarker + 5 dates
+    return (
+      <Card className="shadow-sm border border-gray-200">
+        <CardContent className="p-0">
+          <div className="w-full max-w-full overflow-x-auto">
+            <table className="w-full border-separate border-spacing-0 bg-white text-sm">
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-gray-50 border-b-2 border-gray-300">
+                  {placeholderCols.map((_, i) => (
+                    <th key={`skh-${i}`} className={cn("text-left p-3 font-medium text-gray-900 border-r border-gray-200", i === 0 ? "min-w-[160px]" : "min-w-[120px]")}>{i === 0 ? "Biomarker" : ""}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {placeholderRows.map((_, r) => (
+                  <tr key={`skr-${r}`} className="border-b border-gray-200">
+                    {placeholderCols.map((_, c) => (
+                      <td key={`skc-${r}-${c}`} className={cn("p-3 border-r border-gray-200", c === 0 ? "min-w-[160px]" : "min-w-[120px]")}>
+                        {c === 0 ? (
+                          <div className="h-4 w-40 bg-gray-200 rounded animate-pulse" />
+                        ) : (
+                          <div className="flex items-center justify-center">
+                            <SparklineSkeleton />
+                          </div>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   // Render the biomarker reports table (and its empty/loading states)
   const renderTable = () => {
     if (!selectedPatient) {
@@ -494,13 +594,7 @@ export default function BiomarkersPage() {
     }
 
     if (isLoading) {
-      return (
-        <Card className="min-h-[400px]">
-          <CardContent className="py-10 flex items-center justify-center gap-2 text-gray-600">
-            <Loader2 className="h-5 w-5 animate-spin" /> Loading reports...
-          </CardContent>
-        </Card>
-      )
+      return renderSkeletonTable()
     }
 
     if (reports.length === 0) {
@@ -567,7 +661,41 @@ export default function BiomarkersPage() {
                           const rr = nameRefRange.get(key)
                           return (
                             <td key={`${name}-${dateIso}`} className={cn("p-3 text-center border-r border-b min-w-[120px] border-gray-200", getCellBackgroundColor(cell, rr))}>
-                              {cell && cell.value !== "" ? (
+                              {cell?.series && cell.series.length > 1 ? (
+                                <button
+                                  className="w-full h-10 flex items-center justify-center"
+                                  onClick={() => {
+                                    setTrendView({ name, category: String(category), dateIso, unit: cell.unit, series: cell.series! })
+                                  }}
+                                  aria-label="View trend"
+                                >
+                                  {(() => {
+                                    const s = cell.series!
+                                    const w = 100, h = 28, pad = 2
+                                    const xs = s.map(p => p.t)
+                                    const ys = s.map(p => p.v)
+                                    const minX = Math.min(...xs), maxX = Math.max(...xs)
+                                    const minY = Math.min(...ys), maxY = Math.max(...ys)
+                                    const scaleX = (t: number) => minX === maxX ? w/2 : pad + (t - minX) * (w - 2*pad) / (maxX - minX)
+                                    const scaleY = (v: number) => {
+                                      if (minY === maxY) return h/2
+                                      const y = pad + (v - minY) * (h - 2*pad) / (maxY - minY)
+                                      return h - y
+                                    }
+                                    const d = s.map((p, i) => `${i === 0 ? 'M' : 'L'}${scaleX(p.t)},${scaleY(p.v)}`).join(' ')
+                                    return (
+                                      <svg width={w} height={h} className="text-blue-600">
+                                        <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" />
+                                      </svg>
+                                    )
+                                  })()}
+                                </button>
+                              ) : cell?.series && cell.series.length === 1 ? (
+                                <div className="font-medium text-gray-900">
+                                  {String(cell.series[0].v)}
+                                  {cell.unit && <span className="text-gray-600 ml-1">{cell.unit}</span>}
+                                </div>
+                              ) : cell && cell.value !== "" ? (
                                 <div className="font-medium text-gray-900">
                                   {cell.value}
                                   {cell.unit && <span className="text-gray-600 ml-1">{cell.unit}</span>}
@@ -940,6 +1068,150 @@ export default function BiomarkersPage() {
               </Tabs>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Biomarker Trend Modal (state-driven) */}
+      <Dialog open={Boolean(trendView)} onOpenChange={(open) => { if (!open) setTrendView(null) }}>
+        <DialogContent className="max-w-7xl w-[90vw]">
+          {trendView && (() => {
+            const { name, dateIso, unit, series } = trendView
+            const w = 1200, h = 360, padL = 56, padR = 18, padT = 12, padB = 42
+            const xs = series.map((p: any) => p.t)
+            const ys = series.map((p: any) => p.v)
+            const minX = Math.min(...xs), maxX = Math.max(...xs)
+            const rawMinY = Math.min(...ys), rawMaxY = Math.max(...ys)
+            const yRange = Math.max(1, rawMaxY - rawMinY)
+            const yPad = yRange * 0.08
+            const minY = rawMinY - yPad
+            const maxY = rawMaxY + yPad
+            const sx = (t: number) => padL + (t - minX) * (w - padL - padR) / Math.max(1, (maxX - minX))
+            const sy = (v: number) => padT + (maxY - v) * (h - padT - padB) / Math.max(1, (maxY - minY))
+            const d = series.map((p: any, i: number) => `${i === 0 ? 'M' : 'L'}${sx(p.t)},${sy(p.v)}`).join(' ')
+            // Build ticks only from actual data values/times (sampled to keep it readable)
+            const uniq = <T,>(arr: T[]) => Array.from(new Set(arr))
+            const pickSpaced = (arr: number[], count: number) => {
+              if (arr.length <= count) return arr
+              const res: number[] = []
+              for (let i = 0; i < count; i++) {
+                const idx = Math.round(i * (arr.length - 1) / (count - 1))
+                res.push(arr[idx])
+              }
+              return Array.from(new Set(res))
+            }
+            // Y labels: always include the true minimum from data as the first tick
+            const uniqY = uniq(ys).sort((a,b)=>a-b)
+            const rest = uniqY.filter(v => v !== rawMinY)
+            const yVals = [rawMinY, ...pickSpaced(rest, 4)]
+            // X ticks: start at the lowest reading time, then every full hour thereafter, ending at next full hour after max
+            const ceilToHour = (ms: number) => { const d = new Date(ms); const p = d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0; d.setMinutes(0,0,0); if (p) d.setHours(d.getHours()+1); return d.getTime() }
+            // Ensure the axis ends at a round hour strictly greater than the highest reading time
+            let endHour = ceilToHour(maxX)
+            const maxDate = new Date(maxX)
+            if (maxDate.getMinutes() === 0 && maxDate.getSeconds() === 0 && maxDate.getMilliseconds() === 0) {
+              endHour += 60 * 60 * 1000
+            }
+            const hourMs = 60 * 60 * 1000
+            const halfHourMs = 30 * 60 * 1000
+            const startHour = ceilToHour(minX)
+            // Adaptive tick step: if the total time window is small, use 30 minutes for better readability
+            const totalSpanMs = Math.max(0, endHour - startHour)
+            const stepMs = totalSpanMs <= 4 * hourMs ? halfHourMs : hourMs
+            const floorToStep = (ms: number, step: number) => {
+              const d = new Date(ms)
+              const minutes = d.getMinutes()
+              const stepMin = Math.max(1, Math.round(step / 60000))
+              const delta = minutes % stepMin
+              d.setMinutes(minutes - delta, 0, 0)
+              return d.getTime()
+            }
+            const startTick = floorToStep(minX, stepMs)
+            const xVals: number[] = []
+            for (let t = startTick; t <= endHour; t += stepMs) xVals.push(t)
+            const clamp = (x: number, min: number, max: number) => Math.max(min, Math.min(max, x))
+            return (
+              <div className="space-y-2">
+                <div className="font-semibold">{name} · {new Date(dateIso).toLocaleDateString()} {unit ? `(${unit})` : ""}</div>
+                <div className="overflow-x-auto">
+                  <svg
+                    width="100%"
+                    height={h}
+                    viewBox={`0 0 ${w} ${h}`}
+                    className="text-blue-600"
+                    onMouseMove={(e) => {
+                      const svg = e.currentTarget
+                      const rect = svg.getBoundingClientRect()
+                      const mouseX = (e.clientX - rect.left) * (w / rect.width)
+                      // Invert sx to time
+                      const t = minX + (mouseX - padL) * Math.max(1, (maxX - minX)) / Math.max(1, (w - padL - padR))
+                      // Find nearest series point
+                      let nearest = series[0]
+                      let best = Infinity
+                      for (const p of series) {
+                        const dx = Math.abs(p.t - t)
+                        if (dx < best) { best = dx; nearest = p as any }
+                      }
+                      setTrendHover({ x: sx((nearest as any).t), y: sy((nearest as any).v), t: (nearest as any).t, v: (nearest as any).v })
+                    }}
+                    onMouseLeave={() => setTrendHover(null)}
+                  >
+                    {/* Y labels only (no background grid) */}
+                    {yVals.map((yv, i) => (
+                      <text key={`yl-${i}`} x={padL - 8} y={sy(yv) + 3} textAnchor="end" fontSize="11" fill="#6b7280">{Math.round(yv)}</text>
+                    ))}
+                    {/* X labels only; clamp first/last inside chart to avoid overflow */}
+                    {xVals.map((xv, i) => {
+                      // Omit the first label at origin and hide the very last label at the right edge
+                      if (i === 0 || i === xVals.length - 1) return null
+                      const cx = i === 0 ? Math.max(padL, sx(xv)) : clamp(sx(xv), padL + 22, w - padR - 22)
+                      const anchor = 'middle'
+                      return (
+                        <g key={`xl-${i}`}>
+                          <line x1={cx} y1={h - padB - 3} x2={cx} y2={h - padB + 3} stroke="#1d4ed8" strokeWidth="1.5" />
+                          <text x={cx} y={h - padB + 14} textAnchor={anchor as any} fontSize="11" fill="#6b7280">{new Date(xv).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</text>
+                        </g>
+                      )
+                    })}
+                    {/* Axis */}
+                    <line x1={padL} y1={padT} x2={padL} y2={h - padB} stroke="#9ca3af" />
+                    <line x1={padL} y1={h - padB} x2={w - padR} y2={h - padB} stroke="#9ca3af" />
+                    {/* Line */}
+                    <path d={d} fill="none" stroke="currentColor" strokeWidth="2.25" />
+                    {/* Points */}
+                    {series.map((p: any, idx: number) => (
+                      <g key={`pt-${idx}`}>
+                        <circle cx={sx(p.t)} cy={sy(p.v)} r={2.5} fill="#ffffff" stroke="currentColor" strokeWidth="1.5" />
+                        <title>{`${new Date(p.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ${p.v}${unit ? ` ${unit}` : ''}`}</title>
+                      </g>
+                    ))}
+                    {/* Hover guideline and marker */}
+                    {trendHover && (() => {
+                      const tipW = 140
+                      const tipH = 28
+                      const gap = 8
+                      // Prefer showing tooltip on the right; if it would overflow, show on the left
+                      let tx = trendHover.x + gap
+                      if (tx + tipW > w - padR) tx = trendHover.x - tipW - gap
+                      // Keep tooltip vertically within the chart
+                      let ty = trendHover.y - 20
+                      if (ty < padT + 4) ty = padT + 4
+                      if (ty + tipH > h - padB - 4) ty = h - padB - tipH - 4
+                      return (
+                        <g pointerEvents="none">
+                          <line x1={trendHover.x} y1={padT} x2={trendHover.x} y2={h - padB} stroke="#93c5fd" strokeWidth="1" strokeDasharray="3,3" />
+                          <circle cx={trendHover.x} cy={trendHover.y} r={4} fill="#1d4ed8" stroke="#fff" strokeWidth="1.5" />
+                          <rect x={tx} y={ty} width={tipW} height={tipH} rx="4" fill="#111827" opacity="0.9" />
+                          <text x={tx + 8} y={ty + 18} fontSize="11" fill="#f9fafb">
+                            {new Date(trendHover.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {trendHover.v}{unit ? ` ${unit}` : ''}
+                          </text>
+                        </g>
+                      )
+                    })()}
+                  </svg>
+                </div>
+              </div>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </div>
