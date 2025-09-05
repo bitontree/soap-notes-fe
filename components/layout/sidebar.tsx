@@ -23,6 +23,7 @@ const navigation = [
   { name: "Generate SOAP", href: "/generate", icon: FileText },
   { name: "EHR Integration", href: "/ehr", icon: Database },
   { name: "Biomarkers", href: "/biomarkers", icon: Activity },
+  { name: "Schedules", href: "/schedules", icon: History },
   { name: "History", href: "/history", icon: History },
   { name: "Upload Health Report", href: "/health-report", icon: Upload }, 
   { name: "Settings", href: "/settings", icon: Settings },

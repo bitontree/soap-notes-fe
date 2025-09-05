@@ -99,6 +99,47 @@ interface SOAPNotesResponse {
   };
 }
 
+// ---------- Schedules & Slots Types ----------
+export interface CreateScheduleRequest {
+  start_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  patients_per_slot: number;
+  location: string;
+  days_of_week: string[];
+  week_pattern: string; // "EVERY_WEEK" | "ODD_WEEKS" | "EVEN_WEEKS" | "CUSTOM"
+  custom_weeks?: number[];
+}
+
+export interface Schedule {
+  id: string;
+  start_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  patients_per_slot: number;
+  location: string;
+  days_of_week: string[];
+  week_pattern: string;
+  custom_weeks?: number[];
+}
+
+export interface Slot {
+  id: string;
+  schedule_id: string;
+  doctor_id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  max_patients: number;
+  current_patients: number;
+  status: "AVAILABLE" | "FULL" | "BLOCKED";
+  location: string;
+}
+
 // ---------- Error Class ----------
 
 class ApiError extends Error {
@@ -598,6 +639,56 @@ export const soapApi = {
           "Failed to generate SOAP note"
       );
     }
+  },
+};
+
+// ---------- Schedules & Slots API ----------
+export const schedulesApi = {
+  async list(): Promise<Schedule[]>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<{ schedules: Schedule[] }>(
+      "/schedules/",
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+    const payload = (res.data as any) || {};
+    return payload.schedules ?? (Array.isArray(payload) ? payload : []);
+  },
+
+  async create(data: CreateScheduleRequest): Promise<{ schedule: Schedule; slots?: Slot[] }>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{ schedule: Schedule; slots?: Slot[] }>(
+      "/schedules/",
+      { method: "POST", data, headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+
+    return response.data as any;
+  },
+
+  async update(scheduleId: string, data: Partial<CreateScheduleRequest>): Promise<{ schedule: Schedule; slots?: Slot[] }>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{ schedule: Schedule; slots?: Slot[] }>(
+      `/schedules/${scheduleId}`,
+      { method: "PUT", data, headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+
+    return response.data as any;
+  },
+
+  async getSlotsForSchedule(scheduleId: string): Promise<Slot[]>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const res = await apiRequest<{ slots: Slot[] }>(
+      `/schedules/${scheduleId}/slots`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+    const payload = (res.data as any) || {};
+    return payload.slots ?? (Array.isArray(payload) ? payload : []);
   },
 };
 
