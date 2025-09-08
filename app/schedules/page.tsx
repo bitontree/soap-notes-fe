@@ -33,9 +33,8 @@ export default function SchedulesPage() {
   const [slotDuration, setSlotDuration] = useState<number>(30)
   const [patientsPerSlot, setPatientsPerSlot] = useState<number>(1)
   const [location, setLocation] = useState<string>("")
-  const [daysOfWeek, setDaysOfWeek] = useState<string[]>(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]) 
-  const [weekPattern, setWeekPattern] = useState<string>("EVERY WEEK")
-  const [customWeeks, setCustomWeeks] = useState<number[]>([])
+  const [daysOfWeek, setDaysOfWeek] = useState<string[]>([]) 
+  const [recurringIntervalWeeks, setRecurringIntervalWeeks] = useState<number>(1)
 
   const [creating, setCreating] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
@@ -175,7 +174,7 @@ export default function SchedulesPage() {
   }, [slots, currentView])
 
   async function handleCreateSchedule() {
-    if (!startDate || !endDate || !location) return
+    if (!startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0) return
     setCreating(true)
     try {
       const payload: CreateScheduleRequest = {
@@ -187,8 +186,7 @@ export default function SchedulesPage() {
         patients_per_slot: patientsPerSlot,
         location,
         days_of_week: daysOfWeek,
-        week_pattern: weekPattern,
-        custom_weeks: weekPattern === "CUSTOM" ? customWeeks : undefined,
+        recurring_interval_weeks: recurringIntervalWeeks,
       }
       const res = await schedulesApi.create(payload)
       const created = (res as any)?.schedule as Schedule | undefined
@@ -214,11 +212,25 @@ export default function SchedulesPage() {
         description: "Schedule created successfully",
       })
     } catch (e: any) {
-      toast({
-        title: "Error",
-        description: e?.message || "Failed to create schedule",
-        variant: "destructive",
-      })
+      // Provide a clearer message for duplicate/transaction write conflicts
+      const detail = (e?.response?.data?.detail as any) ?? e?.message ?? ""
+      const detailStr = typeof detail === "string" ? detail : JSON.stringify(detail)
+      const isDuplicate = /WriteConflict|TransientTransactionError|duplicate/i.test(detailStr) ||
+        (typeof e?.code === "number" && e?.code === 112)
+
+      if (isDuplicate) {
+        toast({
+          title: "Duplicate schedule",
+          description: "A schedule with the same settings already exists. Try changing dates, days, or time.",
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: e?.message || "Failed to create schedule",
+          variant: "destructive",
+        })
+      }
     } finally {
       setCreating(false)
     }
@@ -238,8 +250,7 @@ export default function SchedulesPage() {
           setPatientsPerSlot(1)
           setLocation("")
           setDaysOfWeek([])
-          setWeekPattern("EVERY_WEEK")
-          setCustomWeeks([])
+          setRecurringIntervalWeeks(1)
           setEditingScheduleId("")
           setIsEditing(false)
           setDrawerOpen(true)
@@ -273,9 +284,15 @@ export default function SchedulesPage() {
               if (start) setStartTime(start.toTimeString().slice(0,5))
               if (end) setEndTime(end.toTimeString().slice(0,5))
               if (schedule) {
+                setStartDate(schedule.start_date)
+                setEndDate(schedule.end_date)
+                setStartTime(schedule.start_time.slice(0, 5)) // Convert HH:MM:SS to HH:MM
+                setEndTime(schedule.end_time.slice(0, 5)) // Convert HH:MM:SS to HH:MM
                 setLocation(schedule.location)
                 setSlotDuration(schedule.slot_duration_minutes)
                 setPatientsPerSlot(schedule.patients_per_slot)
+                setDaysOfWeek(schedule.days_of_week)
+                setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
               }
               setEditingScheduleId(scheduleId)
               setIsEditing(true)
@@ -377,9 +394,18 @@ export default function SchedulesPage() {
                     className="w-full text-left border rounded-md p-3 hover:bg-accent"
                     onClick={() => {
                       // Prefill drawer for update
+                      const schedule = schedules.find(s => s.id === item.scheduleId)
                       setLocation(item.location)
                       setStartTime(item.start)
                       setEndTime(item.end)
+                      if (schedule) {
+                        setStartDate(schedule.start_date)
+                        setEndDate(schedule.end_date)
+                        setSlotDuration(schedule.slot_duration_minutes)
+                        setPatientsPerSlot(schedule.patients_per_slot)
+                        setDaysOfWeek(schedule.days_of_week)
+                        setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
+                      }
                       setEditingScheduleId(item.scheduleId)
                       setIsEditing(true)
                       setDayModalOpen(false)
@@ -474,23 +500,18 @@ export default function SchedulesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Week pattern</Label>
-                <div className="flex gap-2 flex-wrap">
-                  {["EVERY WEEK","ODD WEEKS","EVEN WEEKS","CUSTOM"].map(p => (
-                    <Button key={p} type="button" variant={weekPattern === p ? "secondary" : "outline"} onClick={() => setWeekPattern(p)}>
-                      {p}
-                    </Button>
-                  ))}
+                <Label>Recurring Interval (weeks)</Label>
+                <Input 
+                  type="number" 
+                  min="1" 
+                  max="52" 
+                  value={recurringIntervalWeeks} 
+                  onChange={e => setRecurringIntervalWeeks(Number(e.target.value))}
+                  placeholder="1"
+                />
+                <div className="text-xs text-muted-foreground">
+                  How often this schedule repeats (1-52 weeks)
                 </div>
-                {weekPattern === "CUSTOM" && (
-                  <div className="flex gap-2">
-                    {[1,2,3,4].map(n => (
-                      <Button key={n} type="button" variant={customWeeks.includes(n) ? "secondary" : "outline"} onClick={() => setCustomWeeks(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}>
-                        Week {n}
-                      </Button>
-                    ))}
-                  </div>
-                )}
               </div>
 
             </div>
@@ -519,6 +540,8 @@ export default function SchedulesPage() {
                         slot_duration_minutes: slotDuration,
                         patients_per_slot: patientsPerSlot,
                         location,
+                        days_of_week: daysOfWeek,
+                        recurring_interval_weeks: recurringIntervalWeeks,
                       }
                       const res = await schedulesApi.update(editingScheduleId, payload)
                       const updated = (res as any)?.schedule as Schedule | undefined
@@ -544,7 +567,7 @@ export default function SchedulesPage() {
                   Update Schedule
                 </Button>
               ) : (
-                <Button onClick={handleCreateSchedule} disabled={creating || !startDate || !endDate || !location}>{creating ? "Adding..." : "Add Schedule"}</Button>
+                <Button onClick={handleCreateSchedule} disabled={creating || !startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0}>{creating ? "Adding..." : "Add Schedule"}</Button>
               )}
             </div>
           </div>

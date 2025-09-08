@@ -109,8 +109,7 @@ export interface CreateScheduleRequest {
   patients_per_slot: number;
   location: string;
   days_of_week: string[];
-  week_pattern: string; // "EVERY_WEEK" | "ODD_WEEKS" | "EVEN_WEEKS" | "CUSTOM"
-  custom_weeks?: number[];
+  recurring_interval_weeks: number;
 }
 
 export interface Schedule {
@@ -123,8 +122,7 @@ export interface Schedule {
   patients_per_slot: number;
   location: string;
   days_of_week: string[];
-  week_pattern: string;
-  custom_weeks?: number[];
+  recurring_interval_weeks: number;
 }
 
 export interface Slot {
