@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useForm } from "react-hook-form"
 import dynamic from "next/dynamic"
 import { format, parseISO } from "date-fns"
 import { Button } from "@/components/ui/button"
@@ -45,6 +46,22 @@ export default function SchedulesPage() {
   const [dayModalOpen, setDayModalOpen] = useState(false)
   const [dayModalDate, setDayModalDate] = useState<string>("")
   const [dayModalItems, setDayModalItems] = useState<Array<{scheduleId: string; location: string; start: string; end: string}>>([])
+
+  // React Hook Form for dirty tracking (no schema)
+  const { reset: formReset, setValue: setFormValue, formState: { isDirty } } = useForm<CreateScheduleRequest>({
+    mode: "onChange",
+    defaultValues: {
+      start_date: "",
+      end_date: "",
+      start_time: "",
+      end_time: "",
+      slot_duration_minutes: 30,
+      patients_per_slot: 1,
+      location: "",
+      days_of_week: [],
+      recurring_interval_weeks: 1,
+    },
+  })
 
   // Auto-load all schedules and aggregate slots
   useEffect(() => {
@@ -253,6 +270,17 @@ export default function SchedulesPage() {
           setRecurringIntervalWeeks(1)
           setEditingScheduleId("")
           setIsEditing(false)
+          formReset({
+            start_date: "",
+            end_date: "",
+            start_time: "",
+            end_time: "",
+            slot_duration_minutes: 30,
+            patients_per_slot: 1,
+            location: "",
+            days_of_week: [],
+            recurring_interval_weeks: 1,
+          })
           setDrawerOpen(true)
         }}>Add Schedule</Button>
       </div>
@@ -293,6 +321,17 @@ export default function SchedulesPage() {
                 setPatientsPerSlot(schedule.patients_per_slot)
                 setDaysOfWeek(schedule.days_of_week)
                 setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
+                formReset({
+                  start_date: schedule.start_date,
+                  end_date: schedule.end_date,
+                  start_time: schedule.start_time.slice(0, 5),
+                  end_time: schedule.end_time.slice(0, 5),
+                  slot_duration_minutes: schedule.slot_duration_minutes,
+                  patients_per_slot: schedule.patients_per_slot,
+                  location: schedule.location,
+                  days_of_week: [...schedule.days_of_week],
+                  recurring_interval_weeks: schedule.recurring_interval_weeks,
+                })
               }
               setEditingScheduleId(scheduleId)
               setIsEditing(true)
@@ -405,6 +444,17 @@ export default function SchedulesPage() {
                         setPatientsPerSlot(schedule.patients_per_slot)
                         setDaysOfWeek(schedule.days_of_week)
                         setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
+                        formReset({
+                          start_date: schedule.start_date,
+                          end_date: schedule.end_date,
+                          start_time: schedule.start_time.slice(0, 5),
+                          end_time: schedule.end_time.slice(0, 5),
+                          slot_duration_minutes: schedule.slot_duration_minutes,
+                          patients_per_slot: schedule.patients_per_slot,
+                          location: schedule.location,
+                          days_of_week: [...schedule.days_of_week],
+                          recurring_interval_weeks: schedule.recurring_interval_weeks,
+                        })
                       }
                       setEditingScheduleId(item.scheduleId)
                       setIsEditing(true)
@@ -435,29 +485,29 @@ export default function SchedulesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Start Date</Label>
-                  <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  <Input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setFormValue("start_date", e.target.value, { shouldDirty: true }) }} />
                 </div>
                 <div className="space-y-2">
                   <Label>End Date</Label>
-                  <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  <Input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setFormValue("end_date", e.target.value, { shouldDirty: true }) }} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Start Time</Label>
-                  <Input placeholder="--:--" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+                  <Input placeholder="--:--" type="time" value={startTime} onChange={e => { setStartTime(e.target.value); setFormValue("start_time", e.target.value, { shouldDirty: true }) }} />
                 </div>
                 <div className="space-y-2">
                   <Label>End Time</Label>
-                  <Input placeholder="--:--" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+                  <Input placeholder="--:--" type="time" value={endTime} onChange={e => { setEndTime(e.target.value); setFormValue("end_time", e.target.value, { shouldDirty: true }) }} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Duration (minutes)</Label>
-                  <Select value={String(slotDuration)} onValueChange={(v) => setSlotDuration(Number(v))}>
+                  <Select value={String(slotDuration)} onValueChange={(v) => { setSlotDuration(Number(v)); setFormValue("slot_duration_minutes", Number(v), { shouldDirty: true }) }}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select duration" />
                     </SelectTrigger>
@@ -470,7 +520,7 @@ export default function SchedulesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Patients per slot</Label>
-                  <Select value={String(patientsPerSlot)} onValueChange={(v) => setPatientsPerSlot(Number(v))}>
+                  <Select value={String(patientsPerSlot)} onValueChange={(v) => { setPatientsPerSlot(Number(v)); setFormValue("patients_per_slot", Number(v), { shouldDirty: true }) }}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select patients per slot" />
                     </SelectTrigger>
@@ -485,14 +535,22 @@ export default function SchedulesPage() {
 
               <div className="space-y-2">
                 <Label>Location</Label>
-                <Input placeholder="Location" value={location} onChange={e => setLocation(e.target.value)} />
+                <Input placeholder="Location" value={location} onChange={e => { setLocation(e.target.value); setFormValue("location", e.target.value, { shouldDirty: true }) }} />
               </div>
 
               <div className="space-y-2">
                 <Label>Weekdays</Label>
                 <div className="grid grid-cols-3 gap-2 text-sm">
-                  {["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"].map(d => (
-                    <Button key={d} type="button" variant={daysOfWeek.includes(d) ? "secondary" : "outline"} onClick={() => setDaysOfWeek(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}>
+                  {[
+                    "MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"
+                  ].map(d => (
+                    <Button key={d} type="button" variant={daysOfWeek.includes(d) ? "secondary" : "outline"} onClick={() => {
+                      setDaysOfWeek(prev => {
+                        const next = prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]
+                        setFormValue("days_of_week", next, { shouldDirty: true })
+                        return next
+                      })
+                    }}>
                       {d.slice(0,3)}
                     </Button>
                   ))}
@@ -506,7 +564,7 @@ export default function SchedulesPage() {
                   min="1" 
                   max="52" 
                   value={recurringIntervalWeeks} 
-                  onChange={e => setRecurringIntervalWeeks(Number(e.target.value))}
+                  onChange={e => { const val = Number(e.target.value); setRecurringIntervalWeeks(val); setFormValue("recurring_interval_weeks", val, { shouldDirty: true }) }}
                   placeholder="1"
                 />
                 <div className="text-xs text-muted-foreground">
@@ -519,6 +577,7 @@ export default function SchedulesPage() {
               {isEditing && (
                 <Button
                   variant="destructive"
+                  disabled={!isDirty}
                   onClick={async () => {
                     // optimistic: simply close; deletion API can be added if provided later
                     setDrawerOpen(false)
@@ -535,6 +594,8 @@ export default function SchedulesPage() {
                     if (!editingScheduleId) return
                     try {
                       const payload: Partial<CreateScheduleRequest> = {
+                        start_date: startDate,
+                        end_date: endDate,
                         start_time: startTime,
                         end_time: endTime,
                         slot_duration_minutes: slotDuration,
@@ -562,7 +623,7 @@ export default function SchedulesPage() {
                       toast({ title: "Error", description: e?.message || "Failed to update schedule", variant: "destructive" })
                     }
                   }}
-                  disabled={!startTime || !endTime || !location}
+                  disabled={!startTime || !endTime || !location || !isDirty}
                 >
                   Update Schedule
                 </Button>
