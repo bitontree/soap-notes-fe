@@ -799,3 +799,33 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   }
   return { totalNotes: 0, thisWeek: 0, avgProcessingTimeMs: null, activePatients: 0 };
 }
+
+// ---------- Appointments API ----------
+export const appointmentsApi = {
+  async createForUser(userId: string, payload: any): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+    const response = await apiRequest<any>(`/appointments/${userId}`, {
+      method: "POST",
+      data: payload,
+      headers,
+    });
+    if (!response.success) throw new ApiError(500, response.message || "Failed to create appointment");
+    return response.data;
+  },
+  async getForUser(userId: string): Promise<any[]> {
+    const headers = {
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+    const response = await apiRequest<any[]>(`/appointments/${userId}`, {
+      method: "GET",
+      headers,
+    });
+    if (!response.success) throw new ApiError(500, response.message || "Failed to fetch appointments");
+    return response.data || [];
+  },
+};
