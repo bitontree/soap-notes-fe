@@ -688,6 +688,16 @@ export const schedulesApi = {
     const payload = (res.data as any) || {};
     return payload.slots ?? (Array.isArray(payload) ? payload : []);
   },
+
+  async delete(scheduleId: string): Promise<void> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    await apiRequest(`/schedules/${scheduleId}` as any, {
+      method: "DELETE",
+      headers: { ...authHeaders, ...apiKeyHeaders },
+    });
+  },
 };
 
 // ---------- Reports API (Biomarkers) ----------

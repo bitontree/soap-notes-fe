@@ -577,11 +577,18 @@ export default function SchedulesPage() {
               {isEditing && (
                 <Button
                   variant="destructive"
-                  disabled={!isDirty}
                   onClick={async () => {
-                    // optimistic: simply close; deletion API can be added if provided later
-                    setDrawerOpen(false)
-                    toast({ title: "Deleted", description: "Schedule deleted (stub)." })
+                    if (!editingScheduleId) return
+                    try {
+                      await schedulesApi.delete(editingScheduleId)
+                      // Remove schedule and its slots locally
+                      setSchedules(prev => prev.filter(s => s.id !== editingScheduleId))
+                      setSlots(prev => prev.filter(s => s.schedule_id !== editingScheduleId))
+                      setDrawerOpen(false)
+                      toast({ title: "Deleted", description: "Schedule deleted successfully" })
+                    } catch (e: any) {
+                      toast({ title: "Error", description: e?.message || "Failed to delete schedule", variant: "destructive" })
+                    }
                   }}
                 >
                   Delete
