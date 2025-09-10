@@ -37,6 +37,10 @@ export default function SchedulesPage() {
   const [daysOfWeek, setDaysOfWeek] = useState<string[]>([]) 
   const [recurringIntervalWeeks, setRecurringIntervalWeeks] = useState<number>(1)
 
+  // Operation scope + anchor date for update/delete
+  const [operationScope, setOperationScope] = useState<"this_day" | "subsequent_days" | "later_days">("this_day")
+  const [anchorDate, setAnchorDate] = useState<string>("")
+
   const [creating, setCreating] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [slots, setSlots] = useState<Slot[]>([])
@@ -60,6 +64,8 @@ export default function SchedulesPage() {
     conflicts: any[];
   } | null>(null)
   const [rescheduleLoading, setRescheduleLoading] = useState(false)
+  const [rescheduleScope, setRescheduleScope] = useState<"this_day" | "subsequent_days" | "later_days">("this_day")
+  const [rescheduleAnchorDate, setRescheduleAnchorDate] = useState<string>("")
 
   // React Hook Form for dirty tracking (no schema)
   const { reset: formReset, setValue: setFormValue, formState: { isDirty } } = useForm<CreateScheduleRequest>({
@@ -127,13 +133,49 @@ export default function SchedulesPage() {
   }
 
   // Reschedule functions
-  async function openRescheduleModal(scheduleId: string, location: string, totalToReschedule: number) {
+  async function refreshAll() {
+    setLoadingAll(true)
+    setLoadError("")
+    try {
+      const list = await schedulesApi.list()
+      setSchedules(list)
+      const allSlots: Slot[] = []
+      for (const s of list) {
+        try {
+          const sSlots = await schedulesApi.getSlotsForSchedule(s.id)
+          allSlots.push(...sSlots)
+        } catch (e) {
+          // ignore per-schedule error to continue others
+        }
+      }
+      setSlots(allSlots)
+    } catch (e: any) {
+      console.error("Failed to refresh schedules:", e)
+      setLoadError(e?.message || "Failed to fetch schedules")
+      toast({
+        title: "Error",
+        description: e?.message || "Failed to fetch schedules",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingAll(false)
+    }
+  }
+  async function openRescheduleModal(
+    scheduleId: string,
+    location: string,
+    totalToReschedule: number,
+    scope: "this_day" | "subsequent_days" | "later_days",
+    anchor: string
+  ) {
     setRescheduleScheduleId(scheduleId)
     setRescheduleLocation(location)
     setInitialTotalToReschedule(totalToReschedule)
     setRemainingToReschedule(totalToReschedule)
     setSelectedRescheduleDate("")
     setLastRescheduleResult(null)
+    setRescheduleScope(scope)
+    setRescheduleAnchorDate(anchor)
     setRescheduleModalOpen(true)
     
     // Fetch available dates
@@ -143,9 +185,9 @@ export default function SchedulesPage() {
   async function loadAvailableDates(scheduleId: string, location: string) {
     try {
       // Use the schedule's start date instead of today's date
-      const schedule = schedules.find(s => s.id === scheduleId)
-      const fromDate = schedule?.end_date || new Date().toISOString().split('T')[0]
-      const dates = await schedulesApi.getDatesWithSlots(location, fromDate, 30)
+      // const schedule = schedules.find(s => s.id === scheduleId)
+      const fromDate = new Date().toISOString().split('T')[0]
+      const dates = await schedulesApi.getDatesWithSlots(location, fromDate, 30, scheduleId)
       setAvailableDates(dates)
     } catch (e: any) {
       toast({
@@ -161,7 +203,12 @@ export default function SchedulesPage() {
     
     setRescheduleLoading(true)
     try {
-      const result = await schedulesApi.bulkReschedule(rescheduleScheduleId, selectedRescheduleDate, rescheduleLocation)
+      const result = await schedulesApi.bulkReschedule(
+        rescheduleScheduleId,
+        selectedRescheduleDate,
+        rescheduleLocation,
+        { scope: rescheduleScope, anchor_date: rescheduleAnchorDate }
+      )
       
       // Update remaining count
       setRemainingToReschedule(result.remainingCount)
@@ -195,6 +242,8 @@ export default function SchedulesPage() {
           variant: "destructive",
         })
       }
+      // Refresh calendar data after reschedule
+      await refreshAll()
       
     } catch (e: any) {
       toast({
@@ -244,6 +293,7 @@ export default function SchedulesPage() {
       
       // Group slots by schedule_id and date to get the schedule's full time range
       slots.forEach(s => {
+        if (s.status === "BLOCKED") return
         const key = `${s.schedule_id}-${s.date}`
         if (!scheduleMap.has(key)) {
           // Find the original schedule to get the full day time range
@@ -281,6 +331,7 @@ export default function SchedulesPage() {
     } else {
       // Week/Day view: show individual patient slots
       slots.forEach(s => {
+        if (s.status === "BLOCKED") return
         const st = normalizeTime(s.start_time)
         const et = normalizeTime(s.end_time)
         
@@ -349,6 +400,8 @@ export default function SchedulesPage() {
         title: "Success",
         description: "Schedule created successfully",
       })
+      // Ensure all data is in sync with backend
+      await refreshAll()
     } catch (e: any) {
       // Provide a clearer message for duplicate/transaction write conflicts
       const detail = (e?.response?.data?.detail as any) ?? e?.message ?? ""
@@ -363,11 +416,11 @@ export default function SchedulesPage() {
           variant: "destructive",
         })
       } else {
-        toast({
-          title: "Error",
-          description: e?.message || "Failed to create schedule",
-          variant: "destructive",
-        })
+      toast({
+        title: "Error",
+        description: e?.message || "Failed to create schedule",
+        variant: "destructive",
+      })
       }
     } finally {
       setCreating(false)
@@ -432,6 +485,9 @@ export default function SchedulesPage() {
               const end = info?.event?.end as Date | null
               if (start) setStartTime(start.toTimeString().slice(0,5))
               if (end) setEndTime(end.toTimeString().slice(0,5))
+              // Set scope and anchor (anchor is the clicked event's date)
+              setOperationScope("this_day")
+              if (start) setAnchorDate(start.toISOString().slice(0,10))
               if (schedule) {
                 setStartDate(schedule.start_date)
                 setEndDate(schedule.end_date)
@@ -463,7 +519,7 @@ export default function SchedulesPage() {
               const clickedDate = info?.dateStr as string
               if (!clickedDate) return
               // Build unique schedule entries for this date from slots
-              const daySlots = slots.filter(s => s.date === clickedDate)
+              const daySlots = slots.filter(s => s.date === clickedDate && s.status !== "BLOCKED")
               const map = new Map<string, {scheduleId: string; location: string; start: string; end: string}>()
               daySlots.forEach(s => {
                 const prev = map.get(s.schedule_id)
@@ -480,6 +536,9 @@ export default function SchedulesPage() {
               const items = Array.from(map.values())
               setDayModalItems(items)
               setDayModalDate(clickedDate)
+              // Scope + anchor based on clicked day
+              setOperationScope("this_day")
+              setAnchorDate(clickedDate)
               setDayModalOpen(true)
             }}
           />
@@ -659,6 +718,23 @@ export default function SchedulesPage() {
                 <Input placeholder="Location" value={location} onChange={e => { setLocation(e.target.value); setFormValue("location", e.target.value, { shouldDirty: true }) }} />
               </div>
 
+              {/* Operation Scope (only for update; anchor_date comes from clicked date) */}
+              {isEditing && (
+                <div className="space-y-2">
+                  <Label>Scope</Label>
+                  <Select value={operationScope} onValueChange={(v) => setOperationScope(v as any)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select scope" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="this_day">This day</SelectItem>
+                      <SelectItem value="subsequent_days">This and subsequent days</SelectItem>
+                      <SelectItem value="later_days">Later days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label>Weekdays</Label>
                 <div className="grid grid-cols-3 gap-2 text-sm">
@@ -689,7 +765,7 @@ export default function SchedulesPage() {
                   placeholder="1"
                 />
                 <div className="text-xs text-muted-foreground">
-                  How often this schedule repeats (1-52 weeks)
+                  How often this schedule repeats 
                 </div>
               </div>
 
@@ -701,14 +777,44 @@ export default function SchedulesPage() {
                   onClick={async () => {
                     if (!editingScheduleId) return
                     try {
-                      await schedulesApi.delete(editingScheduleId)
+                      await schedulesApi.delete(editingScheduleId, { scope: operationScope, anchor_date: anchorDate })
                       // Remove schedule and its slots locally
                       setSchedules(prev => prev.filter(s => s.id !== editingScheduleId))
                       setSlots(prev => prev.filter(s => s.schedule_id !== editingScheduleId))
-                      setDrawerOpen(false)
+                    setDrawerOpen(false)
                       toast({ title: "Deleted", description: "Schedule deleted successfully" })
+                      // Refresh lists to reflect backend state
+                      await refreshAll()
                     } catch (e: any) {
-                      toast({ title: "Error", description: e?.message || "Failed to delete schedule", variant: "destructive" })
+                      // Parse structured error to trigger reschedule modal when required
+                      let code: string | undefined
+                      let message: string | undefined
+                      let bookedCount: number | undefined
+                      if (typeof e?.message === "string") {
+                        try {
+                          const parsed = JSON.parse(e.message)
+                          if (parsed && typeof parsed === "object") {
+                            code = (parsed as any).code
+                            message = (parsed as any).message
+                            bookedCount = (parsed as any).booked_slots_count
+                          }
+                        } catch { /* ignore */ }
+                      }
+                      const detail = e?.response?.data?.detail
+                      if (!code && typeof detail === "object") code = (detail as any)?.code
+                      if (!message && typeof detail === "object") message = (detail as any)?.message
+                      if (!bookedCount && typeof detail === "object") bookedCount = (detail as any)?.booked_slots_count
+
+                      if (code === "RESCHEDULE_REQUIRED") {
+                        const schedule = schedules.find(s => s.id === editingScheduleId)
+                        if (schedule) {
+                          openRescheduleModal(editingScheduleId, schedule.location, bookedCount || 0, operationScope, anchorDate)
+                        } else {
+                          toast({ title: "Error", description: message || "Schedule not found for rescheduling", variant: "destructive" })
+                        }
+                      } else {
+                        toast({ title: "Error", description: message || e?.message || "Failed to delete schedule", variant: "destructive" })
+                      }
                     }
                   }}
                 >
@@ -732,7 +838,7 @@ export default function SchedulesPage() {
                         days_of_week: daysOfWeek,
                         recurring_interval_weeks: recurringIntervalWeeks,
                       }
-                      const res = await schedulesApi.update(editingScheduleId, payload)
+                      const res = await schedulesApi.update(editingScheduleId, payload, { scope: operationScope, anchor_date: anchorDate })
                       const updated = (res as any)?.schedule as Schedule | undefined
                       const regenerated = (res as any)?.slots as Slot[] | undefined
                       if (updated) {
@@ -747,6 +853,8 @@ export default function SchedulesPage() {
                       }
                       setDrawerOpen(false)
                       toast({ title: "Updated", description: "Schedule updated successfully" })
+                      // Ensure UI reflects any backend-side changes
+                      await refreshAll()
                     } catch (e: any) {
                       // Check if this is a reschedule required error
                       let code: string | undefined
@@ -774,7 +882,7 @@ export default function SchedulesPage() {
                         // Open reschedule modal
                         const schedule = schedules.find(s => s.id === editingScheduleId)
                         if (schedule) {
-                          openRescheduleModal(editingScheduleId, schedule.location, bookedCount || 0)
+                          openRescheduleModal(editingScheduleId, schedule.location, bookedCount || 0, operationScope, anchorDate)
                         } else {
                           toast({ title: "Error", description: message || "Schedule not found for rescheduling", variant: "destructive" })
                         }
@@ -851,7 +959,7 @@ export default function SchedulesPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {availableDates.length === 0 ? (
-                      <div className="p-2 text-sm text-gray-500">No available dates in the next 30 days</div>
+                      <div className="p-2 text-sm text-gray-500">No dates available for rescheduling. Please create a new schedule.</div>
                     ) : (
                       availableDates.map((dateInfo) => (
                         <SelectItem key={dateInfo.date} value={dateInfo.date}>
