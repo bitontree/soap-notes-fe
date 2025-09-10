@@ -141,8 +141,11 @@ export interface Slot {
 // ---------- Error Class ----------
 
 class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
+  constructor(public status: number, message: any) {
+    const normalized = typeof message === "string"
+      ? message
+      : (() => { try { return JSON.stringify(message) } catch { return String(message) } })();
+    super(normalized);
     this.name = "ApiError";
   }
 }
@@ -697,6 +700,42 @@ export const schedulesApi = {
       method: "DELETE",
       headers: { ...authHeaders, ...apiKeyHeaders },
     });
+  },
+
+  async getDatesWithSlots(location: string, fromDate: string, days: number = 30): Promise<Array<{date: string; available_slots: number}>> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{dates: Array<{date: string; available_slots: number}>}>(
+      `/schedules/locations/${encodeURIComponent(location)}/dates-with-slots?from_date=${fromDate}&days=${days}`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+    return response.data?.dates || [];
+  },
+
+  async bulkReschedule(scheduleId: string, targetDate: string, location: string): Promise<{
+    rescheduledCount: number;
+    remainingCount: number;
+    conflicts: any[];
+    moved: Array<{appointment_id: string; new_slot_id: string; date: string; location: string}>;
+  }> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{
+      rescheduledCount: number;
+      remainingCount: number;
+      conflicts: any[];
+      moved: Array<{appointment_id: string; new_slot_id: string; date: string; location: string}>;
+    }>(
+      "/appointments/reschedule/bulk",
+      { 
+        method: "POST", 
+        data: { schedule_id: scheduleId, date: targetDate, location },
+        headers: { ...authHeaders, ...apiKeyHeaders } 
+      }
+    );
+    return response.data!;
   },
 };
 

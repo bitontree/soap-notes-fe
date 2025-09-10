@@ -47,6 +47,20 @@ export default function SchedulesPage() {
   const [dayModalDate, setDayModalDate] = useState<string>("")
   const [dayModalItems, setDayModalItems] = useState<Array<{scheduleId: string; location: string; start: string; end: string}>>([])
 
+  // Reschedule modal state
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false)
+  const [rescheduleScheduleId, setRescheduleScheduleId] = useState<string | null>(null)
+  const [rescheduleLocation, setRescheduleLocation] = useState<string>("")
+  const [initialTotalToReschedule, setInitialTotalToReschedule] = useState<number>(0)
+  const [remainingToReschedule, setRemainingToReschedule] = useState<number>(0)
+  const [selectedRescheduleDate, setSelectedRescheduleDate] = useState<string>("")
+  const [availableDates, setAvailableDates] = useState<Array<{date: string; available_slots: number}>>([])
+  const [lastRescheduleResult, setLastRescheduleResult] = useState<{
+    rescheduledCount: number;
+    conflicts: any[];
+  } | null>(null)
+  const [rescheduleLoading, setRescheduleLoading] = useState(false)
+
   // React Hook Form for dirty tracking (no schema)
   const { reset: formReset, setValue: setFormValue, formState: { isDirty } } = useForm<CreateScheduleRequest>({
     mode: "onChange",
@@ -110,6 +124,113 @@ export default function SchedulesPage() {
       return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`
     }
     return t
+  }
+
+  // Reschedule functions
+  async function openRescheduleModal(scheduleId: string, location: string, totalToReschedule: number) {
+    setRescheduleScheduleId(scheduleId)
+    setRescheduleLocation(location)
+    setInitialTotalToReschedule(totalToReschedule)
+    setRemainingToReschedule(totalToReschedule)
+    setSelectedRescheduleDate("")
+    setLastRescheduleResult(null)
+    setRescheduleModalOpen(true)
+    
+    // Fetch available dates
+    await loadAvailableDates(scheduleId, location)
+  }
+
+  async function loadAvailableDates(scheduleId: string, location: string) {
+    try {
+      // Use the schedule's start date instead of today's date
+      const schedule = schedules.find(s => s.id === scheduleId)
+      const fromDate = schedule?.end_date || new Date().toISOString().split('T')[0]
+      const dates = await schedulesApi.getDatesWithSlots(location, fromDate, 30)
+      setAvailableDates(dates)
+    } catch (e: any) {
+      toast({
+        title: "Error",
+        description: e?.message || "Failed to load available dates",
+        variant: "destructive",
+      })
+    }
+  }
+
+  async function handleBulkReschedule() {
+    if (!rescheduleScheduleId || !selectedRescheduleDate || !rescheduleLocation) return
+    
+    setRescheduleLoading(true)
+    try {
+      const result = await schedulesApi.bulkReschedule(rescheduleScheduleId, selectedRescheduleDate, rescheduleLocation)
+      
+      // Update remaining count
+      setRemainingToReschedule(result.remainingCount)
+      
+      // Store last result for display
+      setLastRescheduleResult({
+        rescheduledCount: result.rescheduledCount,
+        conflicts: result.conflicts
+      })
+      
+      // Refresh available dates to remove filled dates
+      await loadAvailableDates(rescheduleScheduleId, rescheduleLocation)
+      
+      // Clear selection if the selected date is no longer available
+      const stillAvailable = availableDates.some(d => d.date === selectedRescheduleDate && d.available_slots > 0)
+      if (!stillAvailable) {
+        setSelectedRescheduleDate("")
+      }
+      
+      // Show success message
+      toast({
+        title: "Reschedule successful",
+        description: `Moved ${result.rescheduledCount} appointments. ${result.remainingCount} remaining.`,
+      })
+      
+      // If conflicts occurred, show warning
+      if (result.conflicts.length > 0) {
+        toast({
+          title: "Some conflicts occurred",
+          description: `${result.conflicts.length} appointments could not be moved due to conflicts.`,
+          variant: "destructive",
+        })
+      }
+      
+    } catch (e: any) {
+      toast({
+        title: "Error",
+        description: e?.message || "Failed to reschedule appointments",
+        variant: "destructive",
+      })
+    } finally {
+      setRescheduleLoading(false)
+    }
+  }
+
+  function closeRescheduleModal() {
+    if (remainingToReschedule > 0) {
+      // Ask for confirmation if there are still appointments to reschedule
+      if (confirm(`You still have ${remainingToReschedule} appointments to reschedule. Are you sure you want to close?`)) {
+        setRescheduleModalOpen(false)
+        setRescheduleScheduleId(null)
+        setRescheduleLocation("")
+        setInitialTotalToReschedule(0)
+        setRemainingToReschedule(0)
+        setSelectedRescheduleDate("")
+        setAvailableDates([])
+        setLastRescheduleResult(null)
+      }
+    } else {
+      // All appointments rescheduled, close modal
+      setRescheduleModalOpen(false)
+      setRescheduleScheduleId(null)
+      setRescheduleLocation("")
+      setInitialTotalToReschedule(0)
+      setRemainingToReschedule(0)
+      setSelectedRescheduleDate("")
+      setAvailableDates([])
+      setLastRescheduleResult(null)
+    }
   }
 
   // Map slots to FullCalendar events
@@ -627,7 +748,51 @@ export default function SchedulesPage() {
                       setDrawerOpen(false)
                       toast({ title: "Updated", description: "Schedule updated successfully" })
                     } catch (e: any) {
-                      toast({ title: "Error", description: e?.message || "Failed to update schedule", variant: "destructive" })
+                      // Check if this is a reschedule required error
+                      let code: string | undefined
+                      let message: string | undefined
+                      let bookedCount: number | undefined
+                      
+                      // Parse ApiError.message JSON if present
+                      if (typeof e?.message === "string") {
+                        try {
+                          const parsed = JSON.parse(e.message)
+                          if (parsed && typeof parsed === "object") {
+                            code = (parsed as any).code
+                            message = (parsed as any).message
+                            bookedCount = (parsed as any).booked_slots_count
+                          }
+                        } catch { /* ignore */ }
+                      }
+                      
+                      const detail = e?.response?.data?.detail
+                      if (!code && typeof detail === "object") code = (detail as any)?.code
+                      if (!message && typeof detail === "object") message = (detail as any)?.message
+                      if (!bookedCount && typeof detail === "object") bookedCount = (detail as any)?.booked_slots_count
+                      
+                      if (code === "RESCHEDULE_REQUIRED") {
+                        // Open reschedule modal
+                        const schedule = schedules.find(s => s.id === editingScheduleId)
+                        if (schedule) {
+                          openRescheduleModal(editingScheduleId, schedule.location, bookedCount || 0)
+                        } else {
+                          toast({ title: "Error", description: message || "Schedule not found for rescheduling", variant: "destructive" })
+                        }
+                      } else if (code === "RESCHEDULE_REQUIRED_SHRINK_NOT_ALLOWED") {
+                        toast({
+                          title: "Cannot shrink schedule",
+                          description: message || "Cannot shrink date/time while appointments exist. Extend or reschedule instead.",
+                          variant: "destructive",
+                        })
+                      } else if (code === "RESCHEDULE_REQUIRED_RULES_CHANGE_NOT_ALLOWED") {
+                        toast({
+                          title: "Change not allowed",
+                          description: message || "Cannot change slot duration or capacity when appointments already exist. Create a new schedule extension instead.",
+                          variant: "destructive",
+                        })
+                      } else {
+                        toast({ title: "Error", description: message || e?.message || "Failed to update schedule", variant: "destructive" })
+                      }
                     }
                   }}
                   disabled={!startTime || !endTime || !location || !isDirty}
@@ -636,6 +801,91 @@ export default function SchedulesPage() {
                 </Button>
               ) : (
                 <Button onClick={handleCreateSchedule} disabled={creating || !startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0}>{creating ? "Adding..." : "Add Schedule"}</Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Modal */}
+      {rescheduleModalOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/30" onClick={closeRescheduleModal} />
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white rounded-lg shadow-lg">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="text-lg font-semibold">Reschedule Appointments</div>
+              <Button variant="ghost" onClick={closeRescheduleModal}>Close</Button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Progress Info */}
+              <div className="bg-blue-50 p-3 rounded-md">
+                <div className="text-sm font-medium text-blue-900">
+                  Total appointments to reschedule: {initialTotalToReschedule}
+                </div>
+                <div className="text-sm text-blue-700">
+                  Remaining: {remainingToReschedule}
+                </div>
+                {lastRescheduleResult && (
+                  <div className="text-sm text-green-700 mt-1">
+                    Last action: Moved {lastRescheduleResult.rescheduledCount} appointments
+                    {lastRescheduleResult.conflicts.length > 0 && (
+                      <span className="text-orange-600 ml-2">
+                        ({lastRescheduleResult.conflicts.length} conflicts)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Location Info */}
+              <div className="text-sm text-gray-600">
+                Rescheduling appointments from: <span className="font-medium">{rescheduleLocation}</span>
+              </div>
+
+              {/* Date Selection */}
+              <div className="space-y-2">
+                <Label>Select target date</Label>
+                <Select value={selectedRescheduleDate} onValueChange={setSelectedRescheduleDate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a date with available slots" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDates.length === 0 ? (
+                      <div className="p-2 text-sm text-gray-500">No available dates in the next 30 days</div>
+                    ) : (
+                      availableDates.map((dateInfo) => (
+                        <SelectItem key={dateInfo.date} value={dateInfo.date}>
+                          {new Date(dateInfo.date).toLocaleDateString()} - {dateInfo.available_slots} slots available
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={closeRescheduleModal}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleBulkReschedule}
+                  disabled={!selectedRescheduleDate || rescheduleLoading || availableDates.length === 0}
+                >
+                  {rescheduleLoading ? "Rescheduling..." : "Reschedule to selected date"}
+                </Button>
+              </div>
+
+              {/* Completion Message */}
+              {remainingToReschedule === 0 && (
+                <div className="bg-green-50 p-3 rounded-md">
+                  <div className="text-sm font-medium text-green-900">
+                    ✅ All appointments have been rescheduled successfully!
+                  </div>
+                  <div className="text-sm text-green-700 mt-1">
+                    You can now proceed with your schedule changes or delete the schedule.
+                  </div>
+                </div>
               )}
             </div>
           </div>
