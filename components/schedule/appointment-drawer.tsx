@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select"
 import { UserPlus, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { authApi } from "@/lib/api"
+import { authApi, schedulesApi } from "@/lib/api"
 import { appointmentsApi } from "@/lib/api"
 import { parseISO, isValid, format, differenceInYears } from 'date-fns'
 
@@ -54,30 +54,37 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const [booking, setBooking] = React.useState(false)
   const searchRef = React.useRef<HTMLInputElement | null>(null)
 
-  // Load patients when drawer opens
+  // Load patients when drawer opens and sync initial props into local state
   React.useEffect(() => {
     let cancelled = false
     if (!open) return
-  ;(async () => {
+    ;(async () => {
       try {
-  setLoadingPatients(true)
-  const list = await authApi.getPatients()
-  if (!cancelled) setPatients(list || [])
-  setLoadingPatients(false)
+        setLoadingPatients(true)
+        const list = await authApi.getPatients()
+        if (!cancelled) setPatients(list || [])
       } catch (e: any) {
-  setLoadingPatients(false)
         toast({ title: "Failed to load patients", description: e?.message || "Please try again", variant: "destructive" })
+      } finally {
+        if (!cancelled) setLoadingPatients(false)
       }
     })()
-  // sync initial props into local state when opening
-  if (initialDate && !date) setDate(initialDate)
-  if (initialLocation && !location) setLocation(initialLocation)
-  if (initialSlotId && !slotId) setSlotId(initialSlotId)
-  if ((initialSlotTime || undefined) && !slotTime) setSlotTime(initialSlotTime)
-  // autofocus search field when drawer opens
-  setTimeout(() => { try { searchRef.current?.focus() } catch (e) {} }, 50)
+
+  // Always overwrite local slot/date/location state from incoming props when opening
+  setDate(initialDate ?? "")
+  setLocation(initialLocation ?? "")
+  setSlotId(initialSlotId)
+  setSlotTime(initialSlotTime)
+  // Clear any previously entered patient search or selection so the drawer is fresh per-slot
+  setSelected(null)
+  setQuery("")
+  setShowAddPatientForm(false)
+
+    // autofocus search field when drawer opens
+    setTimeout(() => { try { searchRef.current?.focus() } catch (e) {} }, 50)
+
     return () => { cancelled = true }
-  }, [open, toast])
+  }, [open, initialDate, initialLocation, initialSlotId, initialSlotTime, toast])
 
   // Debounced server search when query changes
   React.useEffect(() => {
@@ -188,6 +195,33 @@ const handleConfirm = () => {
     setBooking(true);
 
     try {
+      // Pre-flight: verify slot status by searching schedules/slots for this slotId
+      try {
+        if (slotId) {
+          const list = await schedulesApi.list()
+          let found: any = null
+          for (const sched of list) {
+            try {
+              const rawSlots = await schedulesApi.getSlotsForSchedule(sched.id)
+              if (!rawSlots) continue
+              const match = (rawSlots as any[]).find(rs => String(rs.id) === String(slotId) || String(rs.slot_id) === String(slotId))
+              if (match) { found = match; break }
+            } catch (e) { /* continue */ }
+          }
+          if (found) {
+            const status = (found.status ?? found.state ?? (found.current_patients >= (found.max_patients ?? found.capacity ?? 0) ? 'FULL' : 'AVAILABLE')) as string
+            if (String(status).toUpperCase() !== 'AVAILABLE') {
+              toast({ title: "Slot not available", description: "This slot is no longer available. Please choose another slot.", variant: "destructive" })
+              setBooking(false)
+              return
+            }
+          }
+        }
+      } catch (e) {
+        // If pre-flight fails, log and continue with booking attempt (optimistic)
+        console.error('Slot pre-flight check failed', e)
+      }
+
       const buildPatient = (src: any) => {
         const firstname = (src?.firstname || newFirstname || "").trim();
         const lastname = (src?.lastname || newLastname || "").trim();

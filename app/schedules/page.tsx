@@ -6,6 +6,7 @@ import { format, parseISO } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { schedulesApi, type CreateScheduleRequest, type Slot, type Schedule } from "@/lib/api"
@@ -17,6 +18,8 @@ import dayGridPlugin from "@fullcalendar/daygrid"
 import timeGridPlugin from "@fullcalendar/timegrid"
 import interactionPlugin from "@fullcalendar/interaction"
 import { AppointmentDrawer } from "../../components/schedule/appointment-drawer"
+import { RescheduleDrawer } from "@/components/schedule/reschedule-drawer"
+import { X } from "lucide-react"
 
 
 export default function SchedulesPage() {
@@ -48,6 +51,30 @@ export default function SchedulesPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [slots, setSlots] = useState<Slot[]>([])
   const [appointments, setAppointments] = useState<any[]>([])
+
+  // Remove cancelled / historical appointments from UI lists so slots only show active bookings
+  const sanitizeAppointments = (list: any[] | undefined | null) => {
+    if (!list || !Array.isArray(list)) return []
+    return (list || []).filter((a: any) => {
+      const status = String(a?.status || a?.state || a?.appointment_status || "").toUpperCase()
+      // Exclude anything that looks like a cancellation so cancelled appointments don't re-appear in UI
+      if (status.includes("CANCEL")) return false
+      return true
+    })
+  }
+  // Slot action menu state for booked slots
+  const [slotMenuOpen, setSlotMenuOpen] = useState(false)
+  const [slotMenuPos, setSlotMenuPos] = useState<{x: number; y: number}>({ x: 0, y: 0 })
+  const [slotMenuSlotId, setSlotMenuSlotId] = useState<string | null>(null)
+  const [slotMenuPatientIndex, setSlotMenuPatientIndex] = useState<number | null>(null)
+  const [slotMenuPatientId, setSlotMenuPatientId] = useState<string | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [confirmDeleteReason, setConfirmDeleteReason] = useState<string | undefined>(undefined)
+  const [confirmDeleteNotes, setConfirmDeleteNotes] = useState<string>("")
+  const [confirmDeleteError, setConfirmDeleteError] = useState<string | undefined>(undefined)
+  const [confirmDeleteSlot, setConfirmDeleteSlot] = useState<any | null>(null)
+  const [rescheduleOpen, setRescheduleOpen] = useState(false)
+  const [reschedulePayload, setReschedulePayload] = useState<{ patient?: any; slot?: any; slotId?: string; appointmentId?: string | null } | null>(null)
   const [loadingAll, setLoadingAll] = useState(false)
   const [loadError, setLoadError] = useState<string>("")
   const [currentView, setCurrentView] = useState<string>("dayGridMonth")
@@ -103,7 +130,7 @@ export default function SchedulesPage() {
           const userId = user.id || user._id
           if (userId) {
             const appts = await (await import("@/lib/api")).appointmentsApi.getForUser(userId)
-            if (!cancelled) setAppointments(appts || [])
+            if (!cancelled) setAppointments(sanitizeAppointments(appts || []))
           }
         } catch (e) {
           // ignore appointments fetch errors
@@ -151,7 +178,7 @@ export default function SchedulesPage() {
         if (userId) {
           const appts = await (await import("@/lib/api")).appointmentsApi.getForUser(userId)
           if (cancelled) return
-          setAppointments(appts || [])
+          setAppointments(sanitizeAppointments(appts || []))
         }
       } catch (e) {
         // ignore
@@ -162,6 +189,116 @@ export default function SchedulesPage() {
       if (!cancelled) setLoadingAll(false)
     }
   }
+
+  // Ensure we capture a fresh snapshot for confirm delete drawer whenever it opens
+  useEffect(() => {
+    let cancelled = false
+    if (!confirmDeleteOpen) return
+    ;(async () => {
+      try {
+        // Reset any previous reason/notes/error immediately when opening
+        setConfirmDeleteReason(undefined)
+        setConfirmDeleteNotes("")
+        setConfirmDeleteError(undefined)
+
+        const targetSlotId = slotMenuSlotId
+        if (!targetSlotId) {
+          setConfirmDeleteSlot(null)
+          return
+        }
+
+        // Try targeted refresh: prefer fetching the schedule that owns this slot
+        let freshSlot = slots.find(s => String(s.id) === String(targetSlotId))
+        const scheduleId = freshSlot?.schedule_id
+        if (scheduleId) {
+          try {
+            const raw = await schedulesApi.getSlotsForSchedule(scheduleId)
+            if (cancelled) return
+            const normalized = (raw || []).map((s: any) => normalizeSlot(s))
+            setSlots(prev => [ ...prev.filter(s => s.schedule_id !== scheduleId), ...normalized ])
+            const matched = (normalized || []).find((s: any) => String(s.id) === String(targetSlotId))
+            if (matched) freshSlot = matched
+          } catch (e) {
+            // ignore per-schedule fetch error
+          }
+        } else {
+          // fallback: refresh everything
+          try { await refreshSlotsAndSchedules() } catch (e) {}
+          freshSlot = slots.find(s => String(s.id) === String(targetSlotId)) || freshSlot
+        }
+
+        // Refresh appointments and capture the specific appointment for this slot/patient
+        try {
+          const user = JSON.parse(localStorage.getItem('user') || '{}')
+          const userId = user.id || user._id
+          if (userId) {
+            const api = await import('@/lib/api')
+            const appts = await api.appointmentsApi.getForUser(userId)
+            if (cancelled) return
+            const saneAppts = sanitizeAppointments(appts || [])
+            setAppointments(saneAppts)
+
+            // Prefer matching by patient_id when available (slot can have multiple patients)
+            let found: any = null
+            if (slotMenuPatientId) {
+              found = (saneAppts || []).find((a: any) => String(a.slot_id) === String(targetSlotId) && String(a.patient_id || a.patient?.id || a.patient?._id) === String(slotMenuPatientId)) || null
+            }
+
+            // Fallback: match by patientIndex if provided (use deterministic ordering)
+            if (!found && typeof slotMenuPatientIndex === 'number') {
+              const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(targetSlotId))
+              list.sort((x: any, y: any) => {
+                const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+                const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+                return tx - ty
+              })
+              found = list[slotMenuPatientIndex] || null
+            }
+
+            // Final fallback: most-recent appointment for this slot
+            if (!found) {
+              const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(targetSlotId))
+              if (list.length) {
+                list.sort((x: any, y: any) => {
+                  const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+                  const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+                  return ty - tx
+                })
+                found = list[0]
+              }
+            }
+
+            setConfirmDeleteSlot({ slotId: targetSlotId, slot: freshSlot, appointment: found })
+            setConfirmDeleteReason(undefined)
+            return
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        // final fallback: set snapshot from whatever we have locally
+        const apptLocal = appointments.find(a => String(a.slot_id) === String(targetSlotId)) || null
+  setConfirmDeleteSlot({ slotId: targetSlotId, slot: freshSlot, appointment: apptLocal })
+  setConfirmDeleteReason(undefined)
+      } catch (e) {
+        // ignore
+      }
+    })()
+    return () => { cancelled = true }
+  }, [confirmDeleteOpen, slotMenuSlotId])
+
+  // Clear delete snapshot and form when drawer closes to avoid stale data
+  useEffect(() => {
+    if (!confirmDeleteOpen) {
+      setConfirmDeleteSlot(null)
+      setConfirmDeleteReason(undefined)
+      setConfirmDeleteNotes("")
+      setConfirmDeleteError(undefined)
+  setSlotMenuSlotId(null)
+  setSlotMenuPatientIndex(null)
+  setSlotMenuPatientId(null)
+    }
+  }, [confirmDeleteOpen])
 
   // Normalize time to HH:mm (backend may return HH:MM:SS)
   function normalizeTime(t?: string) {
@@ -221,8 +358,25 @@ export default function SchedulesPage() {
       })
     } else {
   // Week/Day view: show individual patient slots
-  // Build a fast lookup map for appointments by slot_id so we can show patient names quickly
-  const apptBySlot = new Map<string, any>((appointments || []).map((a: any) => [String(a.slot_id), a]))
+  // Build a lookup map for appointments per slot_id (array) so we can show correct patient per index
+  const apptBySlot = new Map<string, any[]>()
+  ;(appointments || []).forEach((a: any) => {
+    const key = String(a.slot_id)
+    const list = apptBySlot.get(key) || []
+    list.push(a)
+    apptBySlot.set(key, list)
+  })
+
+  // Ensure deterministic ordering per-slot so patientIndex maps are stable.
+  // Sort by creation time (created_at / createdAt) ascending so older appointments appear first.
+  apptBySlot.forEach((list, key) => {
+    list.sort((x: any, y: any) => {
+      const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+      const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+      return tx - ty
+    })
+    apptBySlot.set(key, list)
+  })
 
   slots.forEach(s => {
         const st = normalizeTime(s.start_time)
@@ -242,16 +396,15 @@ export default function SchedulesPage() {
         for (let i = 0; i < s.max_patients; i++) {
           const isOccupied = i < s.current_patients
           const status = isOccupied ? "OCCUPIED" : "AVAILABLE"
-          // If occupied, check appointments for this slot id and show patient name if found
+          // If occupied, pick the appointment that corresponds to this patient index (if available)
           let title = status === "OCCUPIED" ? "OCC" : "AVL"
-          if (isOccupied) {
-            const appt = apptBySlot.get(String(s.id))
-            if (appt && (appt.firstname || appt.lastname || appt.patient)) {
-              const fn = appt.firstname || appt.patient?.firstname || ""
-              const ln = appt.lastname || appt.patient?.lastname || ""
-              const name = `${fn} ${ln}`.trim()
-              if (name) title = name
-            }
+          const apptsForSlot = apptBySlot.get(String(s.id)) || []
+          const apptForIndex = apptsForSlot[i] || null
+          if (isOccupied && apptForIndex && (apptForIndex.firstname || apptForIndex.lastname || apptForIndex.patient)) {
+            const fn = apptForIndex.firstname || apptForIndex.patient?.firstname || ""
+            const ln = apptForIndex.lastname || apptForIndex.patient?.lastname || ""
+            const name = `${fn} ${ln}`.trim()
+            if (name) title = name
           }
 
           events.push({
@@ -265,6 +418,8 @@ export default function SchedulesPage() {
             extendedProps: {
               slotId: s.id,
               patientIndex: i,
+              patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
+              appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id,
               status,
               location: s.location,
               scheduleId: s.schedule_id
@@ -428,22 +583,42 @@ export default function SchedulesPage() {
                 setIsEditing(true)
                 setDrawerOpen(true)
               } else {
-                // Week/Day view: clicking a slot should open appointment drawer with prefilled date/location/slot
+                // Week/Day view: clicking a slot should either open appointment drawer (if AVAILABLE)
+                // or show a small action menu (Reschedule/Delete) if the slot is occupied/booked.
                 const slotId = ext?.slotId as string | undefined
                 const dateStr = (info?.event?.start as Date | null)?.toISOString().slice(0,10)
                 const location = ext?.location as string | undefined
-                // set appointment drawer initial values
-                setApptInitialSlotId(slotId)
-                if (dateStr) setApptInitialDate(dateStr)
-                if (location) setApptInitialLocation(location)
-                // compute slot time from event start/end
-                const s = info?.event?.start as Date | null
-                const e = info?.event?.end as Date | null
-                const computedSlotTime: string | undefined = s && e ? `${s.toTimeString().slice(0,5)} - ${e.toTimeString().slice(0,5)}` : undefined
-                setApptInitialSlotTime(computedSlotTime)
-                // open appointment drawer (ensure schedule drawer remains closed)
-                setDrawerOpen(false)
-                setApptDrawerOpen(true)
+                const status = ext?.status as string | undefined
+
+                if (status === "AVAILABLE") {
+                  // set appointment drawer initial values and open
+                  setApptInitialSlotId(slotId)
+                  if (dateStr) setApptInitialDate(dateStr)
+                  if (location) setApptInitialLocation(location)
+                  // compute slot time from event start/end
+                  const s = info?.event?.start as Date | null
+                  const e = info?.event?.end as Date | null
+                  const computedSlotTime: string | undefined = s && e ? `${s.toTimeString().slice(0,5)} - ${e.toTimeString().slice(0,5)}` : undefined
+                  setApptInitialSlotTime(computedSlotTime)
+                  // open appointment drawer (ensure schedule drawer remains closed)
+                  setDrawerOpen(false)
+                  setApptDrawerOpen(true)
+                } else {
+                  // Booked/occupied slot: open a small floating menu at click position
+                  const ev = info?.jsEvent as MouseEvent | undefined
+                  if (ev) {
+                      setSlotMenuPos({ x: ev.clientX, y: ev.clientY })
+                    } else {
+                      setSlotMenuPos({ x: 200, y: 200 })
+                    }
+                    // capture patientIndex and patientId if present on the event
+                    const pIndex = Number(ext?.patientIndex ?? null)
+                    const pId = ext?.patientId ? String(ext.patientId) : null
+                    setSlotMenuPatientIndex(Number.isFinite(pIndex) ? pIndex : null)
+                    setSlotMenuPatientId(pId)
+                    setSlotMenuSlotId(slotId ?? null)
+                    setSlotMenuOpen(true)
+                }
               }
             }}
             dateClick={(info: any) => {
@@ -569,6 +744,23 @@ export default function SchedulesPage() {
           </div>
         </div>
       )}
+
+      {/* Reschedule drawer (UI only) */}
+      <RescheduleDrawer
+        open={rescheduleOpen}
+        onOpenChange={(v) => { if (!v) setReschedulePayload(null); setRescheduleOpen(v) }}
+        patient={reschedulePayload?.patient}
+        initialDate={reschedulePayload?.slot?.date}
+        initialLocation={reschedulePayload?.slot?.location}
+  appointmentId={reschedulePayload?.appointmentId}
+  onDone={async () => { await refreshSlotsAndSchedules(); setRescheduleOpen(false); setReschedulePayload(null) }}
+        // placeholders: we'll fill these from API later
+        onConfirm={(payload) => {
+          // stub: show toast and close; API integration will be added later
+          toast({ title: "Rescheduled (stub)", description: `New date: ${payload.date || 'n/a'}, location: ${payload.location || 'n/a'}` })
+          setRescheduleOpen(false)
+        }}
+      />
 
       {/* Right-side drawer (simple overlay panel) */}
       {drawerOpen && (
@@ -719,6 +911,240 @@ export default function SchedulesPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Slot action menu for booked slots (UI only) */}
+      {slotMenuOpen && (
+        <div
+          className="fixed z-50 bg-white border rounded shadow-md"
+          style={{ left: slotMenuPos.x, top: slotMenuPos.y, minWidth: 180 }}
+          onMouseLeave={() => setSlotMenuOpen(false)}
+        >
+          <div className="p-2">
+            <button
+              className="w-full text-left px-3 py-2 hover:bg-gray-50"
+              onClick={async () => {
+                // Open the reschedule drawer: fetch freshest appointments for this user and determine the appointment id for this slot
+                setSlotMenuOpen(false)
+                try {
+                  const s = slots.find(x => x.id === slotMenuSlotId)
+                  const user = JSON.parse(localStorage.getItem('user') || '{}')
+                  const userId = user.id || user._id
+                  if (!userId) {
+                    toast({ title: 'Not authorized', description: 'Please login to manage appointments', variant: 'destructive' })
+                    return
+                  }
+
+                  const api = await import('@/lib/api')
+                  const freshAppts = await api.appointmentsApi.getForUser(userId)
+                  const saneAppts = sanitizeAppointments(freshAppts || [])
+
+                  // Prefer matching by patient_id when available (slot can have multiple patients)
+                  let found: any = null
+                  if (slotMenuPatientId) {
+                    found = (saneAppts || []).find((a: any) => String(a.slot_id) === String(slotMenuSlotId) && String(a.patient_id || a.patient?.id || a.patient?._id) === String(slotMenuPatientId)) || null
+                  }
+
+                  // Fallback: match by patientIndex if provided (use deterministic ordering)
+                  if (!found && typeof slotMenuPatientIndex === 'number') {
+                    const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(slotMenuSlotId))
+                    list.sort((x: any, y: any) => {
+                      const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+                      const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+                      return tx - ty
+                    })
+                    found = list[slotMenuPatientIndex] || null
+                  }
+
+                  // Final fallback: most-recent appointment for this slot
+                  if (!found) {
+                    const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(slotMenuSlotId))
+                    if (list.length) {
+                      list.sort((x: any, y: any) => {
+                        const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+                        const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+                        return ty - tx
+                      })
+                      found = list[0]
+                    }
+                  }
+
+                  if (!found) {
+                    toast({ title: 'Appointment not found', description: 'Could not find appointment for this slot; refresh and try again', variant: 'destructive' })
+                    await refreshSlotsAndSchedules()
+                    return
+                  }
+
+                  const apptId = found?._id || found?.id || found?.appointment_id || null
+                  setReschedulePayload({ patient: found?.patient || found, slot: s, slotId: slotMenuSlotId || undefined, appointmentId: apptId })
+                  setRescheduleOpen(true)
+                } catch (e: any) {
+                  toast({ title: 'Error', description: e?.message || 'Failed to open reschedule', variant: 'destructive' })
+                }
+              }}
+            >
+              Reschedule
+            </button>
+            <button
+              className="w-full text-left px-3 py-2 text-red-600 hover:bg-gray-50"
+              onClick={() => {
+                setSlotMenuOpen(false)
+                setConfirmDeleteOpen(true)
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete appointment drawer (use same structure as AppointmentDrawer to ensure z-index/overlay/transform behave the same) */}
+      {confirmDeleteOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setConfirmDeleteOpen(false)} />
+          <aside className={`absolute top-0 h-full w-full max-w-sm bg-white shadow-xl transform transition-transform right-0 ${confirmDeleteOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="text-lg font-semibold">Delete appointment</div>
+              <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(false)}><X className="h-4 w-4"/></Button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Show patient name for the appointment tied to slotMenuSlotId - prefer the fresh snapshot in confirmDeleteSlot */}
+              <div>
+                <Label>Patient</Label>
+                {(() => {
+                  // prefer the snapshot captured when the drawer opened (fresh fetch), fallback to local appointments
+                  const appt = confirmDeleteSlot?.appointment || appointments.find(a => String(a.slot_id) === String(slotMenuSlotId))
+                  const fn = appt?.firstname || appt?.patient?.firstname || ""
+                  const ln = appt?.lastname || appt?.patient?.lastname || ""
+                  const name = `${fn} ${ln}`.trim() || "Unknown patient"
+                  return (
+                    <div className="mt-2 p-3 border rounded-md bg-gray-50">
+                      <div className="text-sm font-medium">{name}</div>
+                      {appt?.patient?.dob && <div className="text-xs text-muted-foreground">DOB: {appt.patient.dob}</div>}
+                      {(appt?.patient?.email || appt?.email) && <div className="text-xs text-muted-foreground">{appt?.patient?.email || appt?.email}</div>}
+                      {(appt?.patient?.phone || appt?.phone) && <div className="text-xs text-muted-foreground">{appt?.patient?.phone || appt?.phone}</div>}
+                    </div>
+                  )
+                })()}
+              </div>
+
+              <div>
+                <Label>Cancellation reason</Label>
+                <Select value={confirmDeleteReason} onValueChange={(v) => setConfirmDeleteReason(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select reason" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="patient_cancelled">Patient Cancelled</SelectItem>
+                    <SelectItem value="doctor_cancelled">Doctor Cancelled</SelectItem>
+                    <SelectItem value="not_specified">Reason Not Specified</SelectItem>
+                  </SelectContent>
+                </Select>
+                {confirmDeleteError && <div className="text-sm text-red-600 mt-2">{confirmDeleteError}</div>}
+              </div>
+
+              <div>
+                <Label>Notes</Label>
+                <Textarea value={confirmDeleteNotes} onChange={(e) => setConfirmDeleteNotes((e.target as HTMLTextAreaElement).value)} placeholder="Optional note about the cancellation" className="min-h-[6rem]" />
+              </div>
+
+              <div className="pt-2">
+                <Button className="w-full" variant="destructive" onClick={async () => {
+                  setConfirmDeleteError(undefined)
+                  try {
+                    const user = JSON.parse(localStorage.getItem('user') || '{}')
+                    const userId = user.id || user._id
+                    if (!userId) {
+                      toast({ title: "Not authorized", description: "Please login to manage appointments", variant: "destructive" })
+                      return
+                    }
+
+                    const api = await import('@/lib/api')
+                    // Fetch freshest appointments for this user and ignore cancelled/historical records
+                    const freshAppts = await api.appointmentsApi.getForUser(userId)
+                    const saneAppts = sanitizeAppointments(freshAppts || [])
+
+                    // Prefer matching by patient_id when available (slot can have multiple patients)
+                    let freshAppt: any = null
+                    if (slotMenuPatientId) {
+                      freshAppt = saneAppts.find((a: any) => String(a.slot_id) === String(slotMenuSlotId) && String(a.patient_id || a.patient?.id || a.patient?._id) === String(slotMenuPatientId)) || null
+                    }
+
+                    // If not found and patientIndex was captured, pick the appointment at that index after deterministic ordering
+                    if (!freshAppt && typeof slotMenuPatientIndex === 'number') {
+                      const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(slotMenuSlotId))
+                      list.sort((x: any, y: any) => {
+                        const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+                        const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+                        return tx - ty
+                      })
+                      freshAppt = list[slotMenuPatientIndex] || null
+                    }
+
+                    // Final fallback: pick the most-recent BOOKED appointment for this slot (by created_at desc)
+                    if (!freshAppt) {
+                      const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(slotMenuSlotId))
+                      if (list.length) {
+                        list.sort((x: any, y: any) => {
+                          const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+                          const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+                          return ty - tx
+                        })
+                        freshAppt = list[0]
+                      }
+                    }
+
+                    if (!freshAppt) {
+                      toast({ title: "Not found", description: "Appointment not found for this slot (it may have been removed)", variant: "destructive" })
+                      await refreshSlotsAndSchedules()
+                      setConfirmDeleteOpen(false)
+                      setSlotMenuSlotId(null)
+                      return
+                    }
+
+                    // Verify status is BOOKED
+                    const status = (freshAppt.status || freshAppt.state || freshAppt.appointment_status || '').toString().toUpperCase()
+                    if (status !== 'BOOKED') {
+                      toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED appointments can be cancelled.`, variant: "destructive" })
+                      await refreshSlotsAndSchedules()
+                      setConfirmDeleteOpen(false)
+                      setSlotMenuSlotId(null)
+                      return
+                    }
+
+                    // require reason
+                    if (!confirmDeleteReason) {
+                      setConfirmDeleteError('Please select a cancellation reason')
+                      return
+                    }
+
+                    // Build payload including patient_id and slot_id (so backend has full context)
+                    const payload: any = {
+                      patient_id: freshAppt.patient_id || freshAppt.patient?.id || freshAppt.patient?._id,
+                      slot_id: freshAppt.slot_id || slotMenuSlotId,
+                      reason: confirmDeleteReason
+                    }
+                    if (confirmDeleteNotes && confirmDeleteNotes.trim() !== '') payload.notes = confirmDeleteNotes.trim()
+
+                    // Use the appointment's id when calling cancel
+                    const apptId = freshAppt._id || freshAppt.id || freshAppt.appointment_id
+                    await api.appointmentsApi.cancel(apptId, payload)
+
+                    toast({ title: "Deleted", description: "Appointment cancelled successfully" })
+                    setConfirmDeleteOpen(false)
+                    setSlotMenuSlotId(null)
+                    setAppointments(prev => prev.filter(a => String(a.slot_id) !== String(slotMenuSlotId)))
+                    await refreshSlotsAndSchedules()
+                  } catch (e: any) {
+                    toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive" })
+                  }
+                }}>
+                  Delete appointment
+                </Button>
+              </div>
+            </div>
+          </aside>
         </div>
       )}
     </div>
