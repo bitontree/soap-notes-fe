@@ -141,8 +141,11 @@ export interface Slot {
 // ---------- Error Class ----------
 
 class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
+  constructor(public status: number, message: any) {
+    const normalized = typeof message === "string"
+      ? message
+      : (() => { try { return JSON.stringify(message) } catch { return String(message) } })();
+    super(normalized);
     this.name = "ApiError";
   }
 }
@@ -665,12 +668,20 @@ export const schedulesApi = {
     return response.data as any;
   },
 
-  async update(scheduleId: string, data: Partial<CreateScheduleRequest>): Promise<{ schedule: Schedule; slots?: Slot[] }>{
+  async update(
+    scheduleId: string,
+    data: Partial<CreateScheduleRequest>,
+    opts?: { scope?: "this_day" | "subsequent_days" | "later_days"; anchor_date?: string }
+  ): Promise<{ schedule: Schedule; slots?: Slot[] }>{
     const authHeaders = getAuthHeaders();
     const apiKeyHeaders = getApiKeyAuthHeaders();
 
+    const scope = opts?.scope ? `scope=${encodeURIComponent(opts.scope)}` : "";
+    const anchor = opts?.anchor_date ? `anchor_date=${encodeURIComponent(opts.anchor_date)}` : "";
+    const qs = [scope, anchor].filter(Boolean).join("&");
+
     const response = await apiRequest<{ schedule: Schedule; slots?: Slot[] }>(
-      `/schedules/${scheduleId}`,
+      `/schedules/${scheduleId}${qs ? `?${qs}` : ""}`,
       { method: "PUT", data, headers: { ...authHeaders, ...apiKeyHeaders } }
     );
 
@@ -687,6 +698,64 @@ export const schedulesApi = {
     );
     const payload = (res.data as any) || {};
     return payload.slots ?? (Array.isArray(payload) ? payload : []);
+  },
+
+  async delete(
+    scheduleId: string,
+    opts?: { scope?: "this_day" | "subsequent_days" | "later_days"; anchor_date?: string }
+  ): Promise<void> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const scope = opts?.scope ? `scope=${encodeURIComponent(opts.scope)}` : "";
+    const anchor = opts?.anchor_date ? `anchor_date=${encodeURIComponent(opts.anchor_date)}` : "";
+    const qs = [scope, anchor].filter(Boolean).join("&");
+
+    await apiRequest(`/schedules/${scheduleId}${qs ? `?${qs}` : ""}` as any, {
+      method: "DELETE",
+      headers: { ...authHeaders, ...apiKeyHeaders },
+    });
+  },
+
+  async getDatesWithSlots(location: string, fromDate: string, days: number = 30, scheduleId?: string): Promise<Array<{date: string; available_slots: number}>> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{dates: Array<{date: string; available_slots: number}>}>(
+      `/schedules/locations/${encodeURIComponent(location)}/dates-with-slots?from_date=${fromDate}&days=${days}`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { schedule_id: scheduleId } }
+    );
+    return response.data?.dates || [];
+  },
+
+  async bulkReschedule(
+    scheduleId: string,
+    targetDate: string,
+    location: string,
+    opts?: { scope?: "this_day" | "subsequent_days" | "later_days"; anchor_date?: string }
+  ): Promise<{
+    rescheduledCount: number;
+    remainingCount: number;
+    conflicts: any[];
+    moved: Array<{appointment_id: string; new_slot_id: string; date: string; location: string}>;
+  }> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{
+      rescheduledCount: number;
+      remainingCount: number;
+      conflicts: any[];
+      moved: Array<{appointment_id: string; new_slot_id: string; date: string; location: string}>;
+    }>(
+      "/appointments/reschedule/bulk",
+      { 
+        method: "POST", 
+        data: { schedule_id: scheduleId, date: targetDate, location, scope: opts?.scope, anchor_date: opts?.anchor_date },
+        headers: { ...authHeaders, ...apiKeyHeaders } 
+      }
+    );
+    return response.data!;
   },
 };
 
