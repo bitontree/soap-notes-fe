@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useForm } from "react-hook-form"
 import dynamic from "next/dynamic"
 import { format, parseISO } from "date-fns"
 import { Button } from "@/components/ui/button"
+import { X } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -44,6 +45,55 @@ export default function SchedulesPage() {
   const [creating, setCreating] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [slots, setSlots] = useState<Slot[]>([])
+  const [scheduleDates, setScheduleDates] = useState<Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>([])
+  const [visibleFrom, setVisibleFrom] = useState<string>("")
+  const [visibleTo, setVisibleTo] = useState<string>("")
+  // Simple in-memory caches keyed by range
+  const monthDatesCacheRef = useRef<Map<string, Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>>(new Map())
+  const rangeSlotsCacheRef = useRef<Map<string, Slot[]>>(new Map())
+  // Fine-grained caches by date to prevent refetch between day/week switches
+  const scheduleDatesByDateRef = useRef<Map<string, Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>>(new Map())
+  const slotsByDateRef = useRef<Map<string, Slot[]>>(new Map())
+
+  function enumerateDates(fromISO: string, toISO: string): string[] {
+    const out: string[] = []
+    const start = new Date(fromISO + "T00:00:00Z")
+    const end = new Date(toISO + "T00:00:00Z")
+    for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
+      out.push(d.toISOString().slice(0,10))
+    }
+    return out
+  }
+  function nextDayISO(dateISO: string): string {
+    const d = new Date(dateISO + "T00:00:00Z")
+    d.setUTCDate(d.getUTCDate() + 1)
+    return d.toISOString().slice(0,10)
+  }
+
+  async function resolveLocationForAnchor(scheduleId: string, anchorISO: string): Promise<string | null> {
+    // 1) Try schedule_dates cache
+    const dayDates = scheduleDatesByDateRef.current.get(anchorISO) || []
+    const fromDates = dayDates.find(d => d.schedule_id === scheduleId)
+    if (fromDates?.location) return fromDates.location
+
+    // 2) Try slots cache
+    const daySlots = slotsByDateRef.current.get(anchorISO) || []
+    const fromSlots = daySlots.find(s => s.schedule_id === scheduleId)
+    if (fromSlots?.location) return fromSlots.location
+
+    // 3) Fallback: fetch one-day schedule_dates to determine location
+    try {
+      const dates = await schedulesApi.getScheduleDatesRange(anchorISO, nextDayISO(anchorISO))
+      // populate per-day cache
+      dates.forEach(item => {
+        const arr = scheduleDatesByDateRef.current.get(item.date) || []
+        scheduleDatesByDateRef.current.set(item.date, [...arr, item])
+      })
+      const match = dates.find(d => d.schedule_id === scheduleId)
+      if (match?.location) return match.location
+    } catch {}
+    return null
+  }
   const [loadingAll, setLoadingAll] = useState(false)
   const [loadError, setLoadError] = useState<string>("")
   const [currentView, setCurrentView] = useState<string>("dayGridMonth")
@@ -83,7 +133,7 @@ export default function SchedulesPage() {
     },
   })
 
-  // Auto-load all schedules and aggregate slots
+  // Auto-load all schedules (range data fetched via datesSet)
   useEffect(() => {
     let cancelled = false
     async function loadAll() {
@@ -93,18 +143,6 @@ export default function SchedulesPage() {
         const list = await schedulesApi.list()
         if (cancelled) return
         setSchedules(list)
-        const allSlots: Slot[] = []
-        for (const s of list) {
-          try {
-            const sSlots = await schedulesApi.getSlotsForSchedule(s.id)
-            if (cancelled) return
-            allSlots.push(...sSlots)
-          } catch (e) {
-            // ignore per-schedule error to continue others
-          }
-        }
-        if (cancelled) return
-        setSlots(allSlots)
       } catch (e: any) {
         console.error("Failed to load schedules:", e)
         setLoadError(e?.message || "Failed to fetch schedules")
@@ -139,16 +177,16 @@ export default function SchedulesPage() {
     try {
       const list = await schedulesApi.list()
       setSchedules(list)
-      const allSlots: Slot[] = []
-      for (const s of list) {
+      if (visibleFrom && visibleTo) {
         try {
-          const sSlots = await schedulesApi.getSlotsForSchedule(s.id)
-          allSlots.push(...sSlots)
-        } catch (e) {
-          // ignore per-schedule error to continue others
-        }
+          const [dates, rangeSlots] = await Promise.all([
+            schedulesApi.getScheduleDatesRange(visibleFrom, visibleTo),
+            schedulesApi.getSlotsRange(visibleFrom, visibleTo),
+          ])
+          setScheduleDates(dates)
+          setSlots(rangeSlots)
+        } catch (e) {}
       }
-      setSlots(allSlots)
     } catch (e: any) {
       console.error("Failed to refresh schedules:", e)
       setLoadError(e?.message || "Failed to fetch schedules")
@@ -282,49 +320,30 @@ export default function SchedulesPage() {
     }
   }
 
-  // Map slots to FullCalendar events
+  // Map slots/schedule_dates to FullCalendar events
   const events = useMemo(() => {
     const events: any[] = []
     
     if (currentView === "dayGridMonth") {
-      // Month view: show one event per schedule (grouped by schedule_id and date)
-      // Use the original schedule data to get the full day time range
-      const scheduleMap = new Map<string, {scheduleId: string; location: string; startTime: string; endTime: string; date: string}>()
-      
-      // Group slots by schedule_id and date to get the schedule's full time range
-      slots.forEach(s => {
-        if (s.status === "BLOCKED") return
-        const key = `${s.schedule_id}-${s.date}`
-        if (!scheduleMap.has(key)) {
-          // Find the original schedule to get the full day time range
-          const originalSchedule = schedules.find(sched => sched.id === s.schedule_id)
-          if (originalSchedule) {
-            scheduleMap.set(key, {
-              scheduleId: s.schedule_id,
-              location: s.location,
-              startTime: originalSchedule.start_time,
-              endTime: originalSchedule.end_time,
-              date: s.date
-            })
-          }
-        }
-      })
-      
-      scheduleMap.forEach((schedule, key) => {
-        const st = normalizeTime(schedule.startTime)
-        const et = normalizeTime(schedule.endTime)
-        
+      // Month view: show one event per schedule_date
+      scheduleDates.forEach(d => {
+        const st = normalizeTime(d.start_time)
+        const et = normalizeTime(d.end_time)
         events.push({
-          id: key,
-          title: `${schedule.location} ${schedule.startTime}-${schedule.endTime}`,
-          start: `${schedule.date}T${st}:00`,
-          end: `${schedule.date}T${et}:00`,
+          id: d.id,
+          title: `${d.location} ${st}-${et}`,
+          start: `${d.date}T${st}:00`,
+          end: `${d.date}T${et}:00`,
           backgroundColor: "#dcfce7",
           borderColor: "#dcfce7",
           textColor: "#166534",
           extendedProps: {
-            scheduleId: schedule.scheduleId,
-            location: schedule.location
+            scheduleId: d.schedule_id,
+            scheduleDateId: d.id,
+            location: d.location,
+            date: d.date,
+            start_time: st,
+            end_time: et,
           }
         })
       })
@@ -360,7 +379,7 @@ export default function SchedulesPage() {
     }
     
     return events
-  }, [slots, currentView])
+  }, [slots, currentView, scheduleDates])
 
   async function handleCreateSchedule() {
     if (!startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0) return
@@ -474,42 +493,91 @@ export default function SchedulesPage() {
             scrollTime="07:00:00"
             events={events}
             eventDisplay="block"
-            datesSet={(arg: any) => setCurrentView(arg?.view?.type)}
+            datesSet={(arg: any) => {
+              const viewType = arg?.view?.type
+              setCurrentView(viewType)
+              const from = arg?.view?.currentStart as Date | undefined
+              const to = arg?.view?.currentEnd as Date | undefined
+              if (from && to) {
+                const fromISO = from.toISOString().slice(0,10)
+                const toISO = to.toISOString().slice(0,10)
+                setVisibleFrom(fromISO)
+                setVisibleTo(toISO)
+                ;(async () => {
+                  try {
+                    // Always prepare both datasets for the visible range so view switches are instant
+                    const datesKey = `${fromISO}|${toISO}|month`
+                    const slotsKey = `${fromISO}|${toISO}|slots`
+
+                    // Fetch schedule_dates if not cached
+                    if (monthDatesCacheRef.current.has(datesKey)) {
+                      setScheduleDates(monthDatesCacheRef.current.get(datesKey) || [])
+                    } else {
+                      const dates = await schedulesApi.getScheduleDatesRange(fromISO, toISO)
+                      monthDatesCacheRef.current.set(datesKey, dates)
+                      setScheduleDates(dates)
+                    }
+
+                    // Fetch slots if not cached
+                    if (rangeSlotsCacheRef.current.has(slotsKey)) {
+                      setSlots(rangeSlotsCacheRef.current.get(slotsKey) || [])
+                    } else {
+                      const rangeSlots = await schedulesApi.getSlotsRange(fromISO, toISO)
+                      rangeSlotsCacheRef.current.set(slotsKey, rangeSlots)
+                      setSlots(rangeSlots)
+                    }
+                  } catch (e) {
+                    toast({ title: "Error", description: (e as any)?.message || "Failed to load calendar data", variant: "destructive" })
+                  }
+                })()
+              }
+            }}
             eventClick={(info: any) => {
               if (currentView !== "dayGridMonth") return
-              const scheduleId = info?.event?.extendedProps?.scheduleId as string | undefined
+              const props = info?.event?.extendedProps || {}
+              const scheduleId = props?.scheduleId as string | undefined
               if (!scheduleId) return
-              // Prefill drawer from schedule and event times
               const schedule = schedules.find(s => s.id === scheduleId)
               const start = info?.event?.start as Date | null
-              const end = info?.event?.end as Date | null
-              if (start) setStartTime(start.toTimeString().slice(0,5))
-              if (end) setEndTime(end.toTimeString().slice(0,5))
-              // Set scope and anchor (anchor is the clicked event's date)
+              // Prefer per-day fields from schedule_date (extendedProps)
+              const dayStart = (props.start_time as string) || (start ? start.toTimeString().slice(0,5) : "")
+              const dayEnd = (props.end_time as string) || (info?.event?.end ? (info.event.end as Date).toTimeString().slice(0,5) : "")
+              const dayLoc = (props.location as string) || schedule?.location || ""
+              const dayDate = (props.date as string) || (start ? start.toISOString().slice(0,10) : "")
+
+              // Anchor is clicked date
               setOperationScope("this_day")
-              if (start) setAnchorDate(start.toISOString().slice(0,10))
+              setAnchorDate(dayDate)
+
+              // Recurring fields from schedule (unchanged model fields)
               if (schedule) {
                 setStartDate(schedule.start_date)
                 setEndDate(schedule.end_date)
-                setStartTime(schedule.start_time.slice(0, 5)) // Convert HH:MM:SS to HH:MM
-                setEndTime(schedule.end_time.slice(0, 5)) // Convert HH:MM:SS to HH:MM
-                setLocation(schedule.location)
-                setSlotDuration(schedule.slot_duration_minutes)
-                setPatientsPerSlot(schedule.patients_per_slot)
                 setDaysOfWeek(schedule.days_of_week)
                 setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
-                formReset({
-                  start_date: schedule.start_date,
-                  end_date: schedule.end_date,
-                  start_time: schedule.start_time.slice(0, 5),
-                  end_time: schedule.end_time.slice(0, 5),
-                  slot_duration_minutes: schedule.slot_duration_minutes,
-                  patients_per_slot: schedule.patients_per_slot,
-                  location: schedule.location,
-                  days_of_week: [...schedule.days_of_week],
-                  recurring_interval_weeks: schedule.recurring_interval_weeks,
-                })
               }
+
+              // Per-day fields from schedule_date
+              setStartTime(dayStart)
+              setEndTime(dayEnd)
+              setLocation(dayLoc)
+
+              // Keep existing durations if available on schedule; otherwise don't overwrite
+              if (schedule?.slot_duration_minutes) setSlotDuration(schedule.slot_duration_minutes)
+              if (schedule?.patients_per_slot) setPatientsPerSlot(schedule.patients_per_slot)
+
+              formReset({
+                start_date: schedule?.start_date || "",
+                end_date: schedule?.end_date || "",
+                start_time: dayStart || "",
+                end_time: dayEnd || "",
+                slot_duration_minutes: schedule?.slot_duration_minutes ?? slotDuration,
+                patients_per_slot: schedule?.patients_per_slot ?? patientsPerSlot,
+                location: dayLoc || "",
+                days_of_week: schedule ? [...schedule.days_of_week] : [],
+                recurring_interval_weeks: schedule?.recurring_interval_weeks ?? recurringIntervalWeeks,
+              })
+
               setEditingScheduleId(scheduleId)
               setIsEditing(true)
               setDrawerOpen(true)
@@ -518,22 +586,14 @@ export default function SchedulesPage() {
               if (currentView !== "dayGridMonth") return
               const clickedDate = info?.dateStr as string
               if (!clickedDate) return
-              // Build unique schedule entries for this date from slots
-              const daySlots = slots.filter(s => s.date === clickedDate && s.status !== "BLOCKED")
-              const map = new Map<string, {scheduleId: string; location: string; start: string; end: string}>()
-              daySlots.forEach(s => {
-                const prev = map.get(s.schedule_id)
-                const st = normalizeTime(s.start_time)
-                const et = normalizeTime(s.end_time)
-                if (!prev) {
-                  map.set(s.schedule_id, { scheduleId: s.schedule_id, location: s.location, start: st, end: et })
-                } else {
-                  // expand range
-                  if (st < prev.start) prev.start = st
-                  if (et > prev.end) prev.end = et
-                }
-              })
-              const items = Array.from(map.values())
+              // Build unique schedule entries for this date from scheduleDates (month view data)
+              const dayDates = scheduleDates.filter(d => d.date === clickedDate)
+              const items = dayDates.map(d => ({
+                scheduleId: d.schedule_id,
+                location: d.location,
+                start: normalizeTime(d.start_time),
+                end: normalizeTime(d.end_time),
+              }))
               setDayModalItems(items)
               setDayModalDate(clickedDate)
               // Scope + anchor based on clicked day
@@ -601,7 +661,9 @@ export default function SchedulesPage() {
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-lg shadow-lg">
             <div className="p-4 border-b flex items-center justify-between">
               <div className="text-base font-semibold">{new Date(dayModalDate).toLocaleDateString()}</div>
-              <Button variant="ghost" onClick={() => setDayModalOpen(false)}>Close</Button>
+              <Button variant="ghost" size="icon" aria-label="Close" onClick={() => setDayModalOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
             </div>
             <div className="p-4 space-y-2 max-h-[60vh] overflow-auto">
               {dayModalItems.length === 0 ? (
@@ -659,19 +721,23 @@ export default function SchedulesPage() {
           <div className="absolute inset-y-0 right-0 w-full max-w-md bg-white shadow-xl flex flex-col">
             <div className="p-4 border-b flex items-center justify-between">
               <div className="text-lg font-semibold">{isEditing ? "Update Schedule" : "Add Schedule"}</div>
-              <Button variant="ghost" onClick={() => setDrawerOpen(false)}>Close</Button>
+              <Button variant="ghost" size="icon" aria-label="Close" onClick={() => setDrawerOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
             </div>
             <div className="p-4 space-y-4 overflow-auto">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Start Date</Label>
-                  <Input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setFormValue("start_date", e.target.value, { shouldDirty: true }) }} />
+              {!isEditing && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Start Date</Label>
+                    <Input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setFormValue("start_date", e.target.value, { shouldDirty: true }) }} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>End Date</Label>
+                    <Input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setFormValue("end_date", e.target.value, { shouldDirty: true }) }} />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>End Date</Label>
-                  <Input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setFormValue("end_date", e.target.value, { shouldDirty: true }) }} />
-                </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -713,10 +779,12 @@ export default function SchedulesPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Location</Label>
-                <Input placeholder="Location" value={location} onChange={e => { setLocation(e.target.value); setFormValue("location", e.target.value, { shouldDirty: true }) }} />
-              </div>
+              {!isEditing && (
+                <div className="space-y-2">
+                  <Label>Location</Label>
+                  <Input placeholder="Location" value={location} onChange={e => { setLocation(e.target.value); setFormValue("location", e.target.value, { shouldDirty: true }) }} />
+                </div>
+              )}
 
               {/* Operation Scope (only for update; anchor_date comes from clicked date) */}
               {isEditing && (
@@ -759,7 +827,7 @@ export default function SchedulesPage() {
                 <Input 
                   type="number" 
                   min="1" 
-                  max="52" 
+                  max="4" 
                   value={recurringIntervalWeeks} 
                   onChange={e => { const val = Number(e.target.value); setRecurringIntervalWeeks(val); setFormValue("recurring_interval_weeks", val, { shouldDirty: true }) }}
                   placeholder="1"
@@ -806,11 +874,11 @@ export default function SchedulesPage() {
                       if (!bookedCount && typeof detail === "object") bookedCount = (detail as any)?.booked_slots_count
 
                       if (code === "RESCHEDULE_REQUIRED") {
-                        const schedule = schedules.find(s => s.id === editingScheduleId)
-                        if (schedule) {
-                          openRescheduleModal(editingScheduleId, schedule.location, bookedCount || 0, operationScope, anchorDate)
+                        const loc = await resolveLocationForAnchor(editingScheduleId, anchorDate)
+                        if (loc) {
+                          openRescheduleModal(editingScheduleId, loc, bookedCount || 0, operationScope, anchorDate)
                         } else {
-                          toast({ title: "Error", description: message || "Schedule not found for rescheduling", variant: "destructive" })
+                          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive" })
                         }
                       } else {
                         toast({ title: "Error", description: message || e?.message || "Failed to delete schedule", variant: "destructive" })
@@ -827,14 +895,12 @@ export default function SchedulesPage() {
                   onClick={async () => {
                     if (!editingScheduleId) return
                     try {
+                      // For update: do not send day range or location
                       const payload: Partial<CreateScheduleRequest> = {
-                        start_date: startDate,
-                        end_date: endDate,
                         start_time: startTime,
                         end_time: endTime,
                         slot_duration_minutes: slotDuration,
                         patients_per_slot: patientsPerSlot,
-                        location,
                         days_of_week: daysOfWeek,
                         recurring_interval_weeks: recurringIntervalWeeks,
                       }
@@ -879,12 +945,11 @@ export default function SchedulesPage() {
                       if (!bookedCount && typeof detail === "object") bookedCount = (detail as any)?.booked_slots_count
                       
                       if (code === "RESCHEDULE_REQUIRED") {
-                        // Open reschedule modal
-                        const schedule = schedules.find(s => s.id === editingScheduleId)
-                        if (schedule) {
-                          openRescheduleModal(editingScheduleId, schedule.location, bookedCount || 0, operationScope, anchorDate)
+                        const loc = await resolveLocationForAnchor(editingScheduleId, anchorDate)
+                        if (loc) {
+                          openRescheduleModal(editingScheduleId, loc, bookedCount || 0, operationScope, anchorDate)
                         } else {
-                          toast({ title: "Error", description: message || "Schedule not found for rescheduling", variant: "destructive" })
+                          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive" })
                         }
                       } else if (code === "RESCHEDULE_REQUIRED_SHRINK_NOT_ALLOWED") {
                         toast({
@@ -922,7 +987,9 @@ export default function SchedulesPage() {
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white rounded-lg shadow-lg">
             <div className="p-4 border-b flex items-center justify-between">
               <div className="text-lg font-semibold">Reschedule Appointments</div>
-              <Button variant="ghost" onClick={closeRescheduleModal}>Close</Button>
+              <Button variant="ghost" size="icon" aria-label="Close" onClick={closeRescheduleModal}>
+                <X className="h-4 w-4" />
+              </Button>
             </div>
             <div className="p-4 space-y-4">
               {/* Progress Info */}
