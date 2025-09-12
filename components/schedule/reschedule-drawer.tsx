@@ -16,11 +16,12 @@ type Props = {
   initialLocation?: string
   onConfirm?: (payload: any) => void
   onDone?: () => void
-  // appointmentId to reschedule
-  appointmentId?: string | null
+  // source identifiers to locate the appointment to reschedule
+  sourceSlotId?: string | null
+  sourcePatientId?: string | null
 }
 
-export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, initialDate, initialLocation, onConfirm, onDone, appointmentId }: Props) {
+export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, initialDate, initialLocation, onConfirm, onDone, sourceSlotId, sourcePatientId }: Props) {
   const [internalOpen, setInternalOpen] = React.useState(false)
   const open = typeof controlledOpen === 'boolean' ? controlledOpen : internalOpen
   const setOpen = (v: boolean) => {
@@ -40,6 +41,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
   const [rescheduling, setRescheduling] = React.useState(false)
   const [candidateSlots, setCandidateSlots] = React.useState<Array<any>>([])
   const [selectedSlotId, setSelectedSlotId] = React.useState<string | null>(null)
+  const [showSlotList, setShowSlotList] = React.useState<boolean>(true)
 
   React.useEffect(() => {
     if (!open) return
@@ -107,6 +109,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
     let cancelled = false
     setCandidateSlots([])
     setSelectedSlotId(null)
+    setShowSlotList(true)
     if (!selectedDate || !selectedLocation) return
     ;(async () => {
       try {
@@ -139,7 +142,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
   }, [selectedDate, selectedLocation])
 
   const handleConfirm = async () => {
-    if (!appointmentId) return toast({ title: 'Missing appointment', description: 'Appointment id not found', variant: 'destructive' })
+  if (!sourceSlotId || !sourcePatientId) return toast({ title: 'Missing identifiers', description: 'slot id and patient id required to locate appointment', variant: 'destructive' })
     if (!selectedDate || !selectedLocation) return
     if (rescheduling) return
     setRescheduling(true)
@@ -152,7 +155,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
 
       const user = JSON.parse(localStorage.getItem('user') || '{}')
       const userId = user.id || user._id
-      const patientId = patient?.id || patient?._id
+      const patientId = patient?.id || patient?._id || sourcePatientId
       if (!userId || !patientId) {
         toast({ title: 'Missing user/patient', description: 'Login and patient info required', variant: 'destructive' })
         return
@@ -188,13 +191,37 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
       }
 
   // call reschedule API with the selected slot id (include schedule_id and appointment_id if available)
-  const payload: any = { slot_id: selectedSlotId, patient_id: String(patientId) }
-  // include source appointment id in body as some backends expect it
-  if (appointmentId) payload.appointment_id = String(appointmentId)
+      const payload: any = { slot_id: selectedSlotId, patient_id: String(patientId) }
+
+      // Resolve appointment id by strict match: slot_id + patient_id
+      let appointmentIdToUse: string | null = null
+      try {
+        const api = await import('@/lib/api')
+        const freshAppts = await api.appointmentsApi.getForUser(userId)
+        const saneAppts = (freshAppts || [])
+        const found = (saneAppts || []).find((a: any) => String(a.slot_id) === String(sourceSlotId) && String(a.patient_id || a.patient?.id || a.patient?._id) === String(sourcePatientId)) || null
+        if (!found) {
+          toast({ title: 'Appointment not found', description: 'Could not find appointment for given slot and patient. Please refresh and try again.', variant: 'destructive' })
+          setRescheduling(false)
+          return
+        }
+        appointmentIdToUse = found?._id || found?.id || found?.appointment_id || null
+        if (!appointmentIdToUse) {
+          toast({ title: 'Appointment id missing', description: 'Found appointment but id field is missing', variant: 'destructive' })
+          setRescheduling(false)
+          return
+        }
+        // include source appointment id in body as some backends expect it
+        payload.appointment_id = String(appointmentIdToUse)
+      } catch (e) {
+        toast({ title: 'Failed', description: 'Could not lookup appointment for reschedule', variant: 'destructive' })
+        setRescheduling(false)
+        return
+      }
       const candidate = candidateSlots.find(c => c.id === selectedSlotId)
       if (candidate && candidate.schedule_id) payload.schedule_id = String(candidate.schedule_id)
 
-      const res = await appointmentsApi.reschedule(appointmentId, payload)
+  const res = await appointmentsApi.reschedule(appointmentIdToUse, payload)
       toast({ title: 'Rescheduled', description: res?.message || 'Appointment rescheduled' })
       // call parent refresh if provided
       try { if (typeof onDone === 'function') onDone() } catch (e) {}
@@ -262,16 +289,33 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
               {/* Candidate exact slots for chosen date+location */}
               <div>
                 <Label>Available times</Label>
-                <div className="mt-2 space-y-2 max-h-40 overflow-auto border rounded p-2">
-                  {candidateSlots.length === 0 && <div className="text-sm text-muted-foreground">No available slots for selected date/location</div>}
-                  {candidateSlots.map(cs => (
-                    <button key={cs.id} className={`w-full text-left p-2 rounded ${selectedSlotId === cs.id ? 'bg-blue-50 border' : 'hover:bg-gray-50'}`} onClick={() => setSelectedSlotId(cs.id)}>
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm">{`${cs.start} - ${cs.end}`}</div>
-                        <div className="text-xs text-muted-foreground">{cs.schedule_id}</div>
-                      </div>
-                    </button>
-                  ))}
+                <div className="mt-2">
+                  {selectedSlotId && !showSlotList ? (
+                    (() => {
+                      const sel = candidateSlots.find(c => c.id === selectedSlotId)
+                      return (
+                        <div className="flex items-center justify-between p-3 border rounded bg-gray-50">
+                          <div>
+                            <div className="text-sm">{sel ? `${sel.start} - ${sel.end}` : 'Selected time'}</div>
+                          </div>
+                          <div>
+                            <Button variant="ghost" size="sm" onClick={() => setShowSlotList(true)}>Change</Button>
+                          </div>
+                        </div>
+                      )
+                    })()
+                  ) : (
+                    <div className="mt-2 space-y-2 max-h-40 overflow-auto border rounded p-2">
+                      {candidateSlots.length === 0 && <div className="text-sm text-muted-foreground">No available slots for selected date/location</div>}
+                      {candidateSlots.map(cs => (
+                        <button key={cs.id} className={`w-full text-left p-2 rounded ${selectedSlotId === cs.id ? 'bg-blue-50 border' : 'hover:bg-gray-50'}`} onClick={() => { setSelectedSlotId(cs.id); setShowSlotList(false); }}>
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm">{`${cs.start} - ${cs.end}`}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
