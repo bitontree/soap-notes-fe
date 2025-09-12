@@ -858,54 +858,97 @@ export default function SchedulesPage() {
               }
             }}
             eventClick={(info: any) => {
-              if (currentView !== "dayGridMonth") return
               const props = info?.event?.extendedProps || {}
-              const scheduleId = props?.scheduleId as string | undefined
-              if (!scheduleId) return
-              const schedule = schedules.find(s => s.id === scheduleId)
-              const start = info?.event?.start as Date | null
-              // Prefer per-day fields from schedule_date (extendedProps)
-              const dayStart = (props.start_time as string) || (start ? start.toTimeString().slice(0,5) : "")
-              const dayEnd = (props.end_time as string) || (info?.event?.end ? (info.event.end as Date).toTimeString().slice(0,5) : "")
-              const dayLoc = (props.location as string) || schedule?.location || ""
-              const dayDate = (props.date as string) || (start ? start.toISOString().slice(0,10) : "")
+              // Month view: existing behavior to open schedule-day editor
+              if (currentView === "dayGridMonth") {
+                const scheduleId = props?.scheduleId as string | undefined
+                if (!scheduleId) return
+                const schedule = schedules.find(s => s.id === scheduleId)
+                const start = info?.event?.start as Date | null
+                // Prefer per-day fields from schedule_date (extendedProps)
+                const dayStart = (props.start_time as string) || (start ? start.toTimeString().slice(0,5) : "")
+                const dayEnd = (props.end_time as string) || (info?.event?.end ? (info.event.end as Date).toTimeString().slice(0,5) : "")
+                const dayLoc = (props.location as string) || schedule?.location || ""
+                const dayDate = (props.date as string) || (start ? start.toISOString().slice(0,10) : "")
 
-              // Anchor is clicked date
-              setOperationScope("this_day")
-              setAnchorDate(dayDate)
+                // Anchor is clicked date
+                setOperationScope("this_day")
+                setAnchorDate(dayDate)
 
-              // Recurring fields from schedule (unchanged model fields)
-              if (schedule) {
-                setStartDate(schedule.start_date)
-                setEndDate(schedule.end_date)
-                setDaysOfWeek(schedule.days_of_week)
-                setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
+                // Recurring fields from schedule (unchanged model fields)
+                if (schedule) {
+                  setStartDate(schedule.start_date)
+                  setEndDate(schedule.end_date)
+                  setDaysOfWeek(schedule.days_of_week)
+                  setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
+                }
+
+                // Per-day fields from schedule_date
+                setStartTime(dayStart)
+                setEndTime(dayEnd)
+                setLocation(dayLoc)
+
+                // Keep existing durations if available on schedule; otherwise don't overwrite
+                if (schedule?.slot_duration_minutes) setSlotDuration(schedule.slot_duration_minutes)
+                if (schedule?.patients_per_slot) setPatientsPerSlot(schedule.patients_per_slot)
+
+                formReset({
+                  start_date: schedule?.start_date || "",
+                  end_date: schedule?.end_date || "",
+                  start_time: dayStart || "",
+                  end_time: dayEnd || "",
+                  slot_duration_minutes: schedule?.slot_duration_minutes ?? slotDuration,
+                  patients_per_slot: schedule?.patients_per_slot ?? patientsPerSlot,
+                  location: dayLoc || "",
+                  days_of_week: schedule ? [...schedule.days_of_week] : [],
+                  recurring_interval_weeks: schedule?.recurring_interval_weeks ?? recurringIntervalWeeks,
+                })
+
+                setEditingScheduleId(scheduleId)
+                setIsEditing(true)
+                setDrawerOpen(true)
+                return
               }
 
-              // Per-day fields from schedule_date
-              setStartTime(dayStart)
-              setEndTime(dayEnd)
-              setLocation(dayLoc)
+              // Non-month views: individual slot events
+              const status = (props?.status || "").toString().toUpperCase()
+              const isBlocked = !!props?.isBlocked
+              const slotId = props?.slotId || props?.slot_id || props?.slot
+              const slotTime = (props?.start_time as string) || (info?.event?.start ? (info.event.start as Date).toTimeString().slice(0,5) : "")
+              const slotDate = (props?.date as string) || (info?.event?.start ? (info.event.start as Date).toISOString().slice(0,10) : "")
+              const slotLocation = props?.location || ""
 
-              // Keep existing durations if available on schedule; otherwise don't overwrite
-              if (schedule?.slot_duration_minutes) setSlotDuration(schedule.slot_duration_minutes)
-              if (schedule?.patients_per_slot) setPatientsPerSlot(schedule.patients_per_slot)
+              // If slot is blocked, show a simple toast and do nothing
+              if (isBlocked || status === "BLOCKED") {
+                toast({ title: "Blocked", description: "This slot is blocked and cannot be modified.", variant: "destructive" })
+                return
+              }
 
-              formReset({
-                start_date: schedule?.start_date || "",
-                end_date: schedule?.end_date || "",
-                start_time: dayStart || "",
-                end_time: dayEnd || "",
-                slot_duration_minutes: schedule?.slot_duration_minutes ?? slotDuration,
-                patients_per_slot: schedule?.patients_per_slot ?? patientsPerSlot,
-                location: dayLoc || "",
-                days_of_week: schedule ? [...schedule.days_of_week] : [],
-                recurring_interval_weeks: schedule?.recurring_interval_weeks ?? recurringIntervalWeeks,
-              })
+              // AVAILABLE -> open appointment drawer (pre-fill date/location/time but patient empty)
+              if (status === "AVAILABLE") {
+                // Fill appointment-drawer initial props
+                setApptInitialDate(slotDate)
+                setApptInitialLocation(slotLocation)
+                setApptInitialSlotId(slotId)
+                setApptInitialSlotTime(slotTime)
+                setApptDrawerOpen(true)
+                return
+              }
 
-              setEditingScheduleId(scheduleId)
-              setIsEditing(true)
-              setDrawerOpen(true)
+              // OCCUPIED/BOOKED -> open slot action menu (reschedule/delete)
+              if (status === "OCCUPIED" || status === "BOOKED") {
+                // Position the menu near the click
+                const ev = info?.jsEvent || info?.domEvent
+                const x = ev?.clientX || 0
+                const y = ev?.clientY || 0
+                setSlotMenuPos({ x, y })
+                setSlotMenuSlotId(slotId ? String(slotId) : null)
+                // capture patient index/id if provided
+                setSlotMenuPatientIndex(typeof props?.patientIndex === 'number' ? props.patientIndex : null)
+                setSlotMenuPatientId(props?.patientId ? String(props.patientId) : null)
+                setSlotMenuOpen(true)
+                return
+              }
             }}
             dateClick={(info: any) => {
               if (currentView !== "dayGridMonth") return
