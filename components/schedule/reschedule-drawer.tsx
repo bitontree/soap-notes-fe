@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { X } from "lucide-react"
-import { schedulesApi, appointmentsApi } from "@/lib/api"
+import { schedulesApi, appointmentsApi, authApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
 type Props = {
@@ -19,9 +19,11 @@ type Props = {
   // source identifiers to locate the appointment to reschedule
   sourceSlotId?: string | null
   sourcePatientId?: string | null
+  // current calendar view to determine availability
+  currentView?: string
 }
 
-export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, initialDate, initialLocation, onConfirm, onDone, sourceSlotId, sourcePatientId }: Props) {
+export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, initialDate, initialLocation, onConfirm, onDone, sourceSlotId, sourcePatientId, currentView }: Props) {
   const [internalOpen, setInternalOpen] = React.useState(false)
   const open = typeof controlledOpen === 'boolean' ? controlledOpen : internalOpen
   const setOpen = (v: boolean) => {
@@ -33,6 +35,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
 
   const [selectedDate, setSelectedDate] = React.useState<string | undefined>(initialDate)
   const [selectedLocation, setSelectedLocation] = React.useState<string | undefined>(initialLocation)
+  const [displayPatient, setDisplayPatient] = React.useState<any | null>(patient || null)
 
   const [dates, setDates] = React.useState<string[]>([])
   const [locations, setLocations] = React.useState<string[]>([])
@@ -47,30 +50,44 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
     if (!open) return
     setSelectedDate(initialDate)
     setSelectedLocation(initialLocation)
-
-    // load available dates from schedules
+    // populate displayPatient if not provided but we have sourcePatientId
     let cancelled = false
-    ;(async () => {
-      setLoadingDates(true)
-      try {
-        const list = await schedulesApi.list()
-        if (cancelled) return
-        const datesSet = new Set<string>()
-        for (const sched of list) {
+      ; (async () => {
+        if (!patient && sourcePatientId) {
           try {
-            const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
-            ;(sSlots || []).forEach((ss: any) => { if (ss?.date) datesSet.add(ss.date) })
+            const list = await authApi.getPatients()
+            if (cancelled) return
+            const found = (list || []).find((p: any) => String(p.id || p._id) === String(sourcePatientId)) || null
+            setDisplayPatient(found)
           } catch (e) {
-            // ignore per-schedule fetch errors
+            // ignore
           }
+        } else {
+          setDisplayPatient(patient || null)
         }
-        setDates(Array.from(datesSet).sort())
-      } catch (e) {
-        // ignore
-      } finally {
-        if (!cancelled) setLoadingDates(false)
-      }
-    })()
+      })()
+      // load available dates from schedules
+      ; (async () => {
+        setLoadingDates(true)
+        try {
+          const list = await schedulesApi.list()
+          if (cancelled) return
+          const datesSet = new Set<string>()
+          for (const sched of list) {
+            try {
+              const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
+                ; (sSlots || []).forEach((ss: any) => { if (ss?.date) datesSet.add(ss.date) })
+            } catch (e) {
+              // ignore per-schedule fetch errors
+            }
+          }
+          setDates(Array.from(datesSet).sort())
+        } catch (e) {
+          // ignore
+        } finally {
+          if (!cancelled) setLoadingDates(false)
+        }
+      })()
     return () => { cancelled = true }
   }, [open, initialDate, initialLocation])
 
@@ -78,29 +95,29 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
   React.useEffect(() => {
     let cancelled = false
     if (!selectedDate) return
-    ;(async () => {
-      setLoadingLocations(true)
-      try {
-        const list = await schedulesApi.list()
-        if (cancelled) return
-        const locSet = new Set<string>()
-        for (const sched of list) {
-          try {
-            const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
-            ;(sSlots || []).forEach((ss: any) => {
-              if (ss?.date === selectedDate && ss?.location) locSet.add(ss.location)
-            })
-          } catch (e) {
-            // ignore per-schedule errors
+      ; (async () => {
+        setLoadingLocations(true)
+        try {
+          const list = await schedulesApi.list()
+          if (cancelled) return
+          const locSet = new Set<string>()
+          for (const sched of list) {
+            try {
+              const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
+                ; (sSlots || []).forEach((ss: any) => {
+                  if (ss?.date === selectedDate && ss?.location) locSet.add(ss.location)
+                })
+            } catch (e) {
+              // ignore per-schedule errors
+            }
           }
+          setLocations(Array.from(locSet))
+        } catch (e) {
+          // ignore
+        } finally {
+          if (!cancelled) setLoadingLocations(false)
         }
-        setLocations(Array.from(locSet))
-      } catch (e) {
-        // ignore
-      } finally {
-        if (!cancelled) setLoadingLocations(false)
-      }
-    })()
+      })()
     return () => { cancelled = true }
   }, [selectedDate])
 
@@ -111,38 +128,38 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
     setSelectedSlotId(null)
     setShowSlotList(true)
     if (!selectedDate || !selectedLocation) return
-    ;(async () => {
-      try {
-        const list = await schedulesApi.list()
-        if (cancelled) return
-        const slotsAcc: any[] = []
-        for (const sched of list) {
-          try {
-            const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
-            ;(sSlots || []).forEach((ss: any) => {
-              if (ss?.date === selectedDate && ss?.location === selectedLocation) {
-                // consider available slots only
-                if (!ss.status || String(ss.status).toUpperCase() === 'AVAILABLE' || ss.current_patients < (ss.max_patients || 1)) {
-                  slotsAcc.push({ id: String(ss.id || ss.slot_id), start: ss.start_time, end: ss.end_time, schedule_id: sched.id, raw: ss })
-                }
-              }
-            })
-          } catch (e) {
-            // ignore per-schedule error
+      ; (async () => {
+        try {
+          const list = await schedulesApi.list()
+          if (cancelled) return
+          const slotsAcc: any[] = []
+          for (const sched of list) {
+            try {
+              const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
+                ; (sSlots || []).forEach((ss: any) => {
+                  if (ss?.date === selectedDate && ss?.location === selectedLocation) {
+                    // consider available slots only
+                    if (!ss.status || String(ss.status).toUpperCase() === 'AVAILABLE' || ss.current_patients < (ss.max_patients || 1)) {
+                      slotsAcc.push({ id: String(ss.id || ss.slot_id), start: ss.start_time, end: ss.end_time, schedule_id: sched.id, raw: ss })
+                    }
+                  }
+                })
+            } catch (e) {
+              // ignore per-schedule error
+            }
           }
+          // sort by start time
+          slotsAcc.sort((a, b) => String(a.start).localeCompare(String(b.start)))
+          if (!cancelled) setCandidateSlots(slotsAcc)
+        } catch (e) {
+          // ignore
         }
-        // sort by start time
-        slotsAcc.sort((a,b) => String(a.start).localeCompare(String(b.start)))
-        if (!cancelled) setCandidateSlots(slotsAcc)
-      } catch (e) {
-        // ignore
-      }
-    })()
+      })()
     return () => { cancelled = true }
   }, [selectedDate, selectedLocation])
 
   const handleConfirm = async () => {
-  if (!sourceSlotId || !sourcePatientId) return toast({ title: 'Missing identifiers', description: 'slot id and patient id required to locate appointment', variant: 'destructive' })
+    if (!sourceSlotId || !sourcePatientId) return toast({ title: 'Missing identifiers', description: 'slot id and patient id required to locate appointment', variant: 'destructive' })
     if (!selectedDate || !selectedLocation) return
     if (rescheduling) return
     setRescheduling(true)
@@ -190,7 +207,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
         console.warn('Failed to validate slot before reschedule', e)
       }
 
-  // call reschedule API with the selected slot id (include schedule_id and appointment_id if available)
+      // call reschedule API with the selected slot id (include schedule_id and appointment_id if available)
       const payload: any = { slot_id: selectedSlotId, patient_id: String(patientId) }
 
       // Resolve appointment id by strict match: slot_id + patient_id
@@ -221,16 +238,28 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
       const candidate = candidateSlots.find(c => c.id === selectedSlotId)
       if (candidate && candidate.schedule_id) payload.schedule_id = String(candidate.schedule_id)
 
-  const res = await appointmentsApi.reschedule(appointmentIdToUse, payload)
+      const res = await appointmentsApi.reschedule(appointmentIdToUse, payload)
       toast({ title: 'Rescheduled', description: res?.message || 'Appointment rescheduled' })
       // call parent refresh if provided
-      try { if (typeof onDone === 'function') onDone() } catch (e) {}
+      try { if (typeof onDone === 'function') onDone() } catch (e) { }
       setOpen(false)
     } catch (e: any) {
       toast({ title: 'Failed', description: e?.message || 'Could not reschedule', variant: 'destructive' })
     } finally {
       setRescheduling(false)
     }
+  }
+
+  // Only allow reschedule drawer in weekly and daily views, not monthly
+  const isViewAllowed = currentView === "timeGridWeek" || currentView === "timeGridDay"
+
+  // If the view is not allowed, don't render the drawer
+  if (!isViewAllowed && open) {
+    // Close the drawer if it's opened in an unsupported view
+    if (onOpenChange) {
+      onOpenChange(false)
+    }
+    return null
   }
 
   return (
@@ -241,15 +270,15 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
           <aside className={`absolute top-0 h-full w-full max-w-sm bg-white shadow-xl transform transition-transform right-0 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
             <div className="p-4 border-b flex items-center justify-between">
               <div className="text-lg font-semibold">Reschedule appointment</div>
-              <Button variant="ghost" size="icon" onClick={() => setOpen(false)}><X className="h-4 w-4"/></Button>
+              <Button variant="ghost" size="icon" onClick={() => setOpen(false)}><X className="h-4 w-4" /></Button>
             </div>
             <div className="p-4 space-y-4 overflow-auto">
               <div>
                 <Label>Patient</Label>
                 <div className="mt-2 p-3 border rounded-md bg-gray-50">
-                  <div className="text-sm font-medium">{patient ? `${patient.firstname || ''} ${patient.lastname || ''}`.trim() : 'Unknown patient'}</div>
-                  {patient?.email && <div className="text-xs text-muted-foreground">{patient.email}</div>}
-                  {patient?.phone && <div className="text-xs text-muted-foreground">{patient.phone}</div>}
+                  <div className="text-sm font-medium">{displayPatient ? `${displayPatient.firstname || ''} ${displayPatient.lastname || ''}`.trim() : 'Unknown patient'}</div>
+                  {displayPatient?.email && <div className="text-xs text-muted-foreground">{displayPatient.email}</div>}
+                  {displayPatient?.phone && <div className="text-xs text-muted-foreground">{displayPatient.phone}</div>}
                 </div>
               </div>
 

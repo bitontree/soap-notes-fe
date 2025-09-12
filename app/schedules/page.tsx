@@ -44,7 +44,7 @@ export default function SchedulesPage() {
   const [slotDuration, setSlotDuration] = useState<number>(30)
   const [patientsPerSlot, setPatientsPerSlot] = useState<number>(1)
   const [location, setLocation] = useState<string>("")
-  const [daysOfWeek, setDaysOfWeek] = useState<string[]>([]) 
+  const [daysOfWeek, setDaysOfWeek] = useState<string[]>([])
   const [recurringIntervalWeeks, setRecurringIntervalWeeks] = useState<number>(1)
 
   const [creating, setCreating] = useState(false)
@@ -64,7 +64,7 @@ export default function SchedulesPage() {
   }
   // Slot action menu state for booked slots
   const [slotMenuOpen, setSlotMenuOpen] = useState(false)
-  const [slotMenuPos, setSlotMenuPos] = useState<{x: number; y: number}>({ x: 0, y: 0 })
+  const [slotMenuPos, setSlotMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [slotMenuSlotId, setSlotMenuSlotId] = useState<string | null>(null)
   const [slotMenuPatientIndex, setSlotMenuPatientIndex] = useState<number | null>(null)
   const [slotMenuPatientId, setSlotMenuPatientId] = useState<string | null>(null)
@@ -80,7 +80,7 @@ export default function SchedulesPage() {
   const [currentView, setCurrentView] = useState<string>("dayGridMonth")
   const [dayModalOpen, setDayModalOpen] = useState(false)
   const [dayModalDate, setDayModalDate] = useState<string>("")
-  const [dayModalItems, setDayModalItems] = useState<Array<{scheduleId: string; location: string; start: string; end: string}>>([])
+  const [dayModalItems, setDayModalItems] = useState<Array<{ scheduleId: string; location: string; start: string; end: string }>>([])
 
   // Normalize slot object from backend to local Slot shape expected by the calendar
   const normalizeSlot = (s: any): Slot => {
@@ -194,96 +194,96 @@ export default function SchedulesPage() {
   useEffect(() => {
     let cancelled = false
     if (!confirmDeleteOpen) return
-    ;(async () => {
-      try {
-        // Reset any previous reason/notes/error immediately when opening
-        setConfirmDeleteReason(undefined)
-        setConfirmDeleteNotes("")
-        setConfirmDeleteError(undefined)
-
-        const targetSlotId = slotMenuSlotId
-        if (!targetSlotId) {
-          setConfirmDeleteSlot(null)
-          return
-        }
-
-        // Try targeted refresh: prefer fetching the schedule that owns this slot
-        let freshSlot = slots.find(s => String(s.id) === String(targetSlotId))
-        const scheduleId = freshSlot?.schedule_id
-        if (scheduleId) {
-          try {
-            const raw = await schedulesApi.getSlotsForSchedule(scheduleId)
-            if (cancelled) return
-            const normalized = (raw || []).map((s: any) => normalizeSlot(s))
-            setSlots(prev => [ ...prev.filter(s => s.schedule_id !== scheduleId), ...normalized ])
-            const matched = (normalized || []).find((s: any) => String(s.id) === String(targetSlotId))
-            if (matched) freshSlot = matched
-          } catch (e) {
-            // ignore per-schedule fetch error
-          }
-        } else {
-          // fallback: refresh everything
-          try { await refreshSlotsAndSchedules() } catch (e) {}
-          freshSlot = slots.find(s => String(s.id) === String(targetSlotId)) || freshSlot
-        }
-
-        // Refresh appointments and capture the specific appointment for this slot/patient
+      ; (async () => {
         try {
-          const user = JSON.parse(localStorage.getItem('user') || '{}')
-          const userId = user.id || user._id
-          if (userId) {
-            const api = await import('@/lib/api')
-            const appts = await api.appointmentsApi.getForUser(userId)
-            if (cancelled) return
-            const saneAppts = sanitizeAppointments(appts || [])
-            setAppointments(saneAppts)
+          // Reset any previous reason/notes/error immediately when opening
+          setConfirmDeleteReason(undefined)
+          setConfirmDeleteNotes("")
+          setConfirmDeleteError(undefined)
 
-            // Prefer matching by patient_id when available (slot can have multiple patients)
-            let found: any = null
-            if (slotMenuPatientId) {
-              found = (saneAppts || []).find((a: any) => String(a.slot_id) === String(targetSlotId) && String(a.patient_id || a.patient?.id || a.patient?._id) === String(slotMenuPatientId)) || null
+          const targetSlotId = slotMenuSlotId
+          if (!targetSlotId) {
+            setConfirmDeleteSlot(null)
+            return
+          }
+
+          // Try targeted refresh: prefer fetching the schedule that owns this slot
+          let freshSlot = slots.find(s => String(s.id) === String(targetSlotId))
+          const scheduleId = freshSlot?.schedule_id
+          if (scheduleId) {
+            try {
+              const raw = await schedulesApi.getSlotsForSchedule(scheduleId)
+              if (cancelled) return
+              const normalized = (raw || []).map((s: any) => normalizeSlot(s))
+              setSlots(prev => [...prev.filter(s => s.schedule_id !== scheduleId), ...normalized])
+              const matched = (normalized || []).find((s: any) => String(s.id) === String(targetSlotId))
+              if (matched) freshSlot = matched
+            } catch (e) {
+              // ignore per-schedule fetch error
             }
+          } else {
+            // fallback: refresh everything
+            try { await refreshSlotsAndSchedules() } catch (e) { }
+            freshSlot = slots.find(s => String(s.id) === String(targetSlotId)) || freshSlot
+          }
 
-            // Fallback: match by patientIndex if provided (use deterministic ordering)
-            if (!found && typeof slotMenuPatientIndex === 'number') {
-              const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(targetSlotId))
-              list.sort((x: any, y: any) => {
-                const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
-                const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
-                return tx - ty
-              })
-              found = list[slotMenuPatientIndex] || null
-            }
+          // Refresh appointments and capture the specific appointment for this slot/patient
+          try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}')
+            const userId = user.id || user._id
+            if (userId) {
+              const api = await import('@/lib/api')
+              const appts = await api.appointmentsApi.getForUser(userId)
+              if (cancelled) return
+              const saneAppts = sanitizeAppointments(appts || [])
+              setAppointments(saneAppts)
 
-            // Final fallback: most-recent appointment for this slot
-            if (!found) {
-              const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(targetSlotId))
-              if (list.length) {
+              // Prefer matching by patient_id when available (slot can have multiple patients)
+              let found: any = null
+              if (slotMenuPatientId) {
+                found = (saneAppts || []).find((a: any) => String(a.slot_id) === String(targetSlotId) && String(a.patient_id || a.patient?.id || a.patient?._id) === String(slotMenuPatientId)) || null
+              }
+
+              // Fallback: match by patientIndex if provided (use deterministic ordering)
+              if (!found && typeof slotMenuPatientIndex === 'number') {
+                const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(targetSlotId))
                 list.sort((x: any, y: any) => {
                   const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
                   const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
-                  return ty - tx
+                  return tx - ty
                 })
-                found = list[0]
+                found = list[slotMenuPatientIndex] || null
               }
-            }
 
-            setConfirmDeleteSlot({ slotId: targetSlotId, slot: freshSlot, appointment: found })
-            setConfirmDeleteReason(undefined)
-            return
+              // Final fallback: most-recent appointment for this slot
+              if (!found) {
+                const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(targetSlotId))
+                if (list.length) {
+                  list.sort((x: any, y: any) => {
+                    const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+                    const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+                    return ty - tx
+                  })
+                  found = list[0]
+                }
+              }
+
+              setConfirmDeleteSlot({ slotId: targetSlotId, slot: freshSlot, appointment: found })
+              setConfirmDeleteReason(undefined)
+              return
+            }
+          } catch (e) {
+            // ignore
           }
+
+          // final fallback: set snapshot from whatever we have locally
+          const apptLocal = appointments.find(a => String(a.slot_id) === String(targetSlotId)) || null
+          setConfirmDeleteSlot({ slotId: targetSlotId, slot: freshSlot, appointment: apptLocal })
+          setConfirmDeleteReason(undefined)
         } catch (e) {
           // ignore
         }
-
-        // final fallback: set snapshot from whatever we have locally
-        const apptLocal = appointments.find(a => String(a.slot_id) === String(targetSlotId)) || null
-  setConfirmDeleteSlot({ slotId: targetSlotId, slot: freshSlot, appointment: apptLocal })
-  setConfirmDeleteReason(undefined)
-      } catch (e) {
-        // ignore
-      }
-    })()
+      })()
     return () => { cancelled = true }
   }, [confirmDeleteOpen, slotMenuSlotId])
 
@@ -294,9 +294,9 @@ export default function SchedulesPage() {
       setConfirmDeleteReason(undefined)
       setConfirmDeleteNotes("")
       setConfirmDeleteError(undefined)
-  setSlotMenuSlotId(null)
-  setSlotMenuPatientIndex(null)
-  setSlotMenuPatientId(null)
+      setSlotMenuSlotId(null)
+      setSlotMenuPatientIndex(null)
+      setSlotMenuPatientId(null)
     }
   }, [confirmDeleteOpen])
 
@@ -314,12 +314,12 @@ export default function SchedulesPage() {
   // Map slots to FullCalendar events
   const events = useMemo(() => {
     const events: any[] = []
-    
+
     if (currentView === "dayGridMonth") {
       // Month view: show one event per schedule (grouped by schedule_id and date)
       // Use the original schedule data to get the full day time range
-      const scheduleMap = new Map<string, {scheduleId: string; location: string; startTime: string; endTime: string; date: string}>()
-      
+      const scheduleMap = new Map<string, { scheduleId: string; location: string; startTime: string; endTime: string; date: string }>()
+
       // Group slots by schedule_id and date to get the schedule's full time range
       slots.forEach(s => {
         const key = `${s.schedule_id}-${s.date}`
@@ -337,11 +337,11 @@ export default function SchedulesPage() {
           }
         }
       })
-      
+
       scheduleMap.forEach((schedule, key) => {
         const st = normalizeTime(schedule.startTime)
         const et = normalizeTime(schedule.endTime)
-        
+
         events.push({
           id: key,
           title: `${schedule.location} ${schedule.startTime}-${schedule.endTime}`,
@@ -357,28 +357,28 @@ export default function SchedulesPage() {
         })
       })
     } else {
-  // Week/Day view: show individual patient slots
-  // Build a lookup map for appointments per slot_id (array) so we can show correct patient per index
-  const apptBySlot = new Map<string, any[]>()
-  ;(appointments || []).forEach((a: any) => {
-    const key = String(a.slot_id)
-    const list = apptBySlot.get(key) || []
-    list.push(a)
-    apptBySlot.set(key, list)
-  })
+      // Week/Day view: show individual patient slots
+      // Build a lookup map for appointments per slot_id (array) so we can show correct patient per index
+      const apptBySlot = new Map<string, any[]>()
+        ; (appointments || []).forEach((a: any) => {
+          const key = String(a.slot_id)
+          const list = apptBySlot.get(key) || []
+          list.push(a)
+          apptBySlot.set(key, list)
+        })
 
-  // Ensure deterministic ordering per-slot so patientIndex maps are stable.
-  // Sort by creation time (created_at / createdAt) ascending so older appointments appear first.
-  apptBySlot.forEach((list, key) => {
-    list.sort((x: any, y: any) => {
-      const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
-      const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
-      return tx - ty
-    })
-    apptBySlot.set(key, list)
-  })
+      // Ensure deterministic ordering per-slot so patientIndex maps are stable.
+      // Sort by creation time (created_at / createdAt) ascending so older appointments appear first.
+      apptBySlot.forEach((list, key) => {
+        list.sort((x: any, y: any) => {
+          const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+          const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+          return tx - ty
+        })
+        apptBySlot.set(key, list)
+      })
 
-  slots.forEach(s => {
+      slots.forEach(s => {
         const st = normalizeTime(s.start_time)
         const et = normalizeTime(s.end_time)
         // style per-slot event based on slot.status and occupancy
@@ -393,23 +393,11 @@ export default function SchedulesPage() {
           baseColors.textColor = "#374151"
         }
 
-        for (let i = 0; i < s.max_patients; i++) {
-          const isOccupied = i < s.current_patients
-          const status = isOccupied ? "OCCUPIED" : "AVAILABLE"
-          // If occupied, pick the appointment that corresponds to this patient index (if available)
-          let title = status === "OCCUPIED" ? "OCC" : "AVL"
-          const apptsForSlot = apptBySlot.get(String(s.id)) || []
-          const apptForIndex = apptsForSlot[i] || null
-          if (isOccupied && apptForIndex && (apptForIndex.firstname || apptForIndex.lastname || apptForIndex.patient)) {
-            const fn = apptForIndex.firstname || apptForIndex.patient?.firstname || ""
-            const ln = apptForIndex.lastname || apptForIndex.patient?.lastname || ""
-            const name = `${fn} ${ln}`.trim()
-            if (name) title = name
-          }
-
+        // Handle blocked slots - show one "BLOCKED" event for the entire slot
+        if (s.status === "BLOCKED") {
           events.push({
-            id: `${s.id}-${i}`,
-            title,
+            id: `${s.id}-blocked`,
+            title: "BLOCKED",
             start: `${s.date}T${st}:00`,
             end: `${s.date}T${et}:00`,
             backgroundColor: baseColors.backgroundColor,
@@ -417,18 +405,74 @@ export default function SchedulesPage() {
             textColor: baseColors.textColor,
             extendedProps: {
               slotId: s.id,
-              patientIndex: i,
-              patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
-              appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id,
-              status,
+              patientIndex: null,
+              patientId: undefined,
+              appointmentId: undefined,
+              status: "BLOCKED",
               location: s.location,
-              scheduleId: s.schedule_id
+              scheduleId: s.schedule_id,
+              isBlocked: true
             }
           })
+        } else {
+          // Handle normal slots - show individual patient positions
+          for (let i = 0; i < s.max_patients; i++) {
+            const isOccupied = i < s.current_patients
+            const status = isOccupied ? "OCCUPIED" : "AVAILABLE"
+
+            const apptsForSlot = apptBySlot.get(String(s.id)) || []
+            const apptForIndex = apptsForSlot[i] || null
+
+            // Determine what to show
+            let title = ""
+            let shouldShow = true
+
+            if (status === "AVAILABLE") {
+              title = "AVL"
+            } else if (status === "OCCUPIED") {
+              // Check if we have patient name
+              if (apptForIndex && (apptForIndex.firstname || apptForIndex.lastname || apptForIndex.patient)) {
+                const fn = apptForIndex.firstname || apptForIndex.patient?.firstname || ""
+                const ln = apptForIndex.lastname || apptForIndex.patient?.lastname || ""
+                const name = `${fn} ${ln}`.trim()
+                if (name) {
+                  title = name
+                } else {
+                  // Occupied but no name - don't show this slot
+                  shouldShow = false
+                }
+              } else {
+                // Occupied but no appointment data - don't show this slot
+                shouldShow = false
+              }
+            }
+
+            // Only add event if we should show it
+            if (shouldShow) {
+              events.push({
+                id: `${s.id}-${i}`,
+                title,
+                start: `${s.date}T${st}:00`,
+                end: `${s.date}T${et}:00`,
+                backgroundColor: baseColors.backgroundColor,
+                borderColor: baseColors.borderColor,
+                textColor: baseColors.textColor,
+                extendedProps: {
+                  slotId: s.id,
+                  patientIndex: i,
+                  patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
+                  appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id,
+                  status,
+                  location: s.location,
+                  scheduleId: s.schedule_id
+                }
+              })
+            }
+          }
         }
       })
     }
-    
+
     return events
   }, [slots, currentView, appointments])
 
@@ -524,19 +568,19 @@ export default function SchedulesPage() {
             />
           )}
           <Button onClick={() => {
-          // Reset form for new schedule
-          setStartDate("")
-          setEndDate("")
-          setStartTime("")
-          setEndTime("")
-          setSlotDuration(30)
-          setPatientsPerSlot(1)
-          setLocation("")
-          setDaysOfWeek([])
-          setRecurringIntervalWeeks(1)
-          setEditingScheduleId("")
-          setIsEditing(false)
-          setDrawerOpen(true)
+            // Reset form for new schedule
+            setStartDate("")
+            setEndDate("")
+            setStartTime("")
+            setEndTime("")
+            setSlotDuration(30)
+            setPatientsPerSlot(1)
+            setLocation("")
+            setDaysOfWeek([])
+            setRecurringIntervalWeeks(1)
+            setEditingScheduleId("")
+            setIsEditing(false)
+            setDrawerOpen(true)
           }}>Add Schedule</Button>
         </div>
       </div>
@@ -566,8 +610,8 @@ export default function SchedulesPage() {
                 const schedule = schedules.find(s => s.id === scheduleId)
                 const start = info?.event?.start as Date | null
                 const end = info?.event?.end as Date | null
-                if (start) setStartTime(start.toTimeString().slice(0,5))
-                if (end) setEndTime(end.toTimeString().slice(0,5))
+                if (start) setStartTime(start.toTimeString().slice(0, 5))
+                if (end) setEndTime(end.toTimeString().slice(0, 5))
                 if (schedule) {
                   setStartDate(schedule.start_date)
                   setEndDate(schedule.end_date)
@@ -586,9 +630,15 @@ export default function SchedulesPage() {
                 // Week/Day view: clicking a slot should either open appointment drawer (if AVAILABLE)
                 // or show a small action menu (Reschedule/Delete) if the slot is occupied/booked.
                 const slotId = ext?.slotId as string | undefined
-                const dateStr = (info?.event?.start as Date | null)?.toISOString().slice(0,10)
+                const dateStr = (info?.event?.start as Date | null)?.toISOString().slice(0, 10)
                 const location = ext?.location as string | undefined
                 const status = ext?.status as string | undefined
+                const isBlocked = ext?.isBlocked as boolean | undefined
+
+                // Prevent interaction with blocked slots
+                if (status === "BLOCKED" || isBlocked) {
+                  return // Do nothing for blocked slots
+                }
 
                 if (status === "AVAILABLE") {
                   // set appointment drawer initial values and open
@@ -598,7 +648,7 @@ export default function SchedulesPage() {
                   // compute slot time from event start/end
                   const s = info?.event?.start as Date | null
                   const e = info?.event?.end as Date | null
-                  const computedSlotTime: string | undefined = s && e ? `${s.toTimeString().slice(0,5)} - ${e.toTimeString().slice(0,5)}` : undefined
+                  const computedSlotTime: string | undefined = s && e ? `${s.toTimeString().slice(0, 5)} - ${e.toTimeString().slice(0, 5)}` : undefined
                   setApptInitialSlotTime(computedSlotTime)
                   // open appointment drawer (ensure schedule drawer remains closed)
                   setDrawerOpen(false)
@@ -607,17 +657,17 @@ export default function SchedulesPage() {
                   // Booked/occupied slot: open a small floating menu at click position
                   const ev = info?.jsEvent as MouseEvent | undefined
                   if (ev) {
-                      setSlotMenuPos({ x: ev.clientX, y: ev.clientY })
-                    } else {
-                      setSlotMenuPos({ x: 200, y: 200 })
-                    }
-                    // capture patientIndex and patientId if present on the event
-                    const pIndex = Number(ext?.patientIndex ?? null)
-                    const pId = ext?.patientId ? String(ext.patientId) : null
-                    setSlotMenuPatientIndex(Number.isFinite(pIndex) ? pIndex : null)
-                    setSlotMenuPatientId(pId)
-                    setSlotMenuSlotId(slotId ?? null)
-                    setSlotMenuOpen(true)
+                    setSlotMenuPos({ x: ev.clientX, y: ev.clientY })
+                  } else {
+                    setSlotMenuPos({ x: 200, y: 200 })
+                  }
+                  // capture patientIndex and patientId if present on the event
+                  const pIndex = Number(ext?.patientIndex ?? null)
+                  const pId = ext?.patientId ? String(ext.patientId) : null
+                  setSlotMenuPatientIndex(Number.isFinite(pIndex) ? pIndex : null)
+                  setSlotMenuPatientId(pId)
+                  setSlotMenuSlotId(slotId ?? null)
+                  setSlotMenuOpen(true)
                 }
               }
             }}
@@ -627,7 +677,7 @@ export default function SchedulesPage() {
               if (!clickedDate) return
               // Build unique schedule entries for this date from slots
               const daySlots = slots.filter(s => s.date === clickedDate)
-              const map = new Map<string, {scheduleId: string; location: string; start: string; end: string}>()
+              const map = new Map<string, { scheduleId: string; location: string; start: string; end: string }>()
               daySlots.forEach(s => {
                 const prev = map.get(s.schedule_id)
                 const st = normalizeTime(s.start_time)
@@ -748,13 +798,14 @@ export default function SchedulesPage() {
       {/* Reschedule drawer (UI only) */}
       <RescheduleDrawer
         open={rescheduleOpen}
-      onOpenChange={(v) => { if (!v) setReschedulePayload(null); setRescheduleOpen(v) }}
-    patient={reschedulePayload?.patient}
-    initialDate={reschedulePayload?.slot?.date}
-    initialLocation={reschedulePayload?.slot?.location}
-    sourceSlotId={reschedulePayload?.slotId}
-    sourcePatientId={reschedulePayload?.patientId}
-  onDone={async () => { await refreshSlotsAndSchedules(); setRescheduleOpen(false); setReschedulePayload(null) }}
+        onOpenChange={(v) => { if (!v) setReschedulePayload(null); setRescheduleOpen(v) }}
+        patient={reschedulePayload?.patient}
+        initialDate={reschedulePayload?.slot?.date}
+        initialLocation={reschedulePayload?.slot?.location}
+        sourceSlotId={reschedulePayload?.slotId}
+        sourcePatientId={reschedulePayload?.patientId}
+        currentView={currentView}
+        onDone={async () => { await refreshSlotsAndSchedules(); setRescheduleOpen(false); setReschedulePayload(null) }}
         // placeholders: we'll fill these from API later
         onConfirm={(payload) => {
           // stub: show toast and close; API integration will be added later
@@ -832,9 +883,9 @@ export default function SchedulesPage() {
               <div className="space-y-2">
                 <Label>Weekdays</Label>
                 <div className="grid grid-cols-3 gap-2 text-sm">
-                  {["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"].map(d => (
+                  {["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"].map(d => (
                     <Button key={d} type="button" variant={daysOfWeek.includes(d) ? "secondary" : "outline"} onClick={() => setDaysOfWeek(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}>
-                      {d.slice(0,3)}
+                      {d.slice(0, 3)}
                     </Button>
                   ))}
                 </div>
@@ -842,11 +893,11 @@ export default function SchedulesPage() {
 
               <div className="space-y-2">
                 <Label>Recurring Interval (weeks)</Label>
-                <Input 
-                  type="number" 
-                  min="1" 
-                  max="52" 
-                  value={recurringIntervalWeeks} 
+                <Input
+                  type="number"
+                  min="1"
+                  max="52"
+                  value={recurringIntervalWeeks}
                   onChange={e => setRecurringIntervalWeeks(Number(e.target.value))}
                   placeholder="1"
                 />
@@ -922,10 +973,24 @@ export default function SchedulesPage() {
           style={{ left: slotMenuPos.x, top: slotMenuPos.y, minWidth: 180 }}
           onMouseLeave={() => setSlotMenuOpen(false)}
         >
-            <div className="p-2">
+          <div className="p-2">
             <button
-              className="w-full text-left px-3 py-2 hover:bg-gray-50"
+              className={cn(
+                "w-full text-left px-3 py-2 hover:bg-gray-50",
+                currentView === "dayGridMonth" && "opacity-50 cursor-not-allowed"
+              )}
+              disabled={currentView === "dayGridMonth"}
               onClick={async () => {
+                // Only allow reschedule in weekly and daily views
+                if (currentView === "dayGridMonth") {
+                  toast({
+                    title: 'Reschedule unavailable',
+                    description: 'Reschedule is only available in weekly and daily calendar views',
+                    variant: 'destructive'
+                  })
+                  return
+                }
+
                 // Open the reschedule drawer; do NOT resolve appointment id here. Only allow lookup by slotId + patientId
                 setSlotMenuOpen(false)
                 try {
@@ -964,7 +1029,7 @@ export default function SchedulesPage() {
           <aside className={`absolute top-0 h-full w-full max-w-sm bg-white shadow-xl transform transition-transform right-0 ${confirmDeleteOpen ? 'translate-x-0' : 'translate-x-full'}`}>
             <div className="p-4 border-b flex items-center justify-between">
               <div className="text-lg font-semibold">Delete appointment</div>
-              <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(false)}><X className="h-4 w-4"/></Button>
+              <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(false)}><X className="h-4 w-4" /></Button>
             </div>
             <div className="p-4 space-y-4">
               {/* Show patient name for the appointment tied to slotMenuSlotId - prefer the fresh snapshot in confirmDeleteSlot */}
