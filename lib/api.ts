@@ -757,6 +757,27 @@ export const schedulesApi = {
     );
     return response.data!;
   },
+  
+  // ------- Range-based fetching (new) -------
+  async getScheduleDatesRange(fromDate: string, toDate: string): Promise<Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<{ dates: Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }> }>(
+      `/schedules/schedule-dates`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { from_date: fromDate, to_date: toDate } }
+    );
+    return (res.data as any)?.dates ?? [];
+  },
+
+  async getSlotsRange(fromDate: string, toDate: string): Promise<Slot[]>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<{ slots: Slot[] }>(
+      `/schedules/slots`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { from_date: fromDate, to_date: toDate } }
+    );
+    return (res.data as any)?.slots ?? [];
+  },
 };
 
 // ---------- Reports API (Biomarkers) ----------
