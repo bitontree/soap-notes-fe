@@ -20,6 +20,7 @@ import interactionPlugin from "@fullcalendar/interaction"
 import { AppointmentDrawer } from "../../components/schedule/appointment-drawer"
 import { RescheduleDrawer } from "@/components/schedule/reschedule-drawer"
 import { X } from "lucide-react"
+import { createPortal } from "react-dom"
 
 
 export default function SchedulesPage() {
@@ -1023,7 +1024,7 @@ export default function SchedulesPage() {
       )}
 
       {/* Delete appointment drawer (use same structure as AppointmentDrawer to ensure z-index/overlay/transform behave the same) */}
-      {confirmDeleteOpen && (
+      {confirmDeleteOpen && createPortal(
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/30" onClick={() => setConfirmDeleteOpen(false)} />
           <aside className={`absolute top-0 h-full w-full max-w-sm bg-white shadow-xl transform transition-transform right-0 ${confirmDeleteOpen ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -1168,7 +1169,7 @@ export default function SchedulesPage() {
               </div>
             </div>
           </aside>
-        </div>
+        </div>, document.body
       )}
     </div>
   )

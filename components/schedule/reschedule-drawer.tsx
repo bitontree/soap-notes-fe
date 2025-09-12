@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
@@ -262,99 +263,100 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
     return null
   }
 
-  return (
-    <>
-      {open && (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setOpen(false)} />
-          <aside className={`absolute top-0 h-full w-full max-w-sm bg-white shadow-xl transform transition-transform right-0 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
-            <div className="p-4 border-b flex items-center justify-between">
-              <div className="text-lg font-semibold">Reschedule appointment</div>
-              <Button variant="ghost" size="icon" onClick={() => setOpen(false)}><X className="h-4 w-4" /></Button>
-            </div>
-            <div className="p-4 space-y-4 overflow-auto">
-              <div>
-                <Label>Patient</Label>
-                <div className="mt-2 p-3 border rounded-md bg-gray-50">
-                  <div className="text-sm font-medium">{displayPatient ? `${displayPatient.firstname || ''} ${displayPatient.lastname || ''}`.trim() : 'Unknown patient'}</div>
-                  {displayPatient?.email && <div className="text-xs text-muted-foreground">{displayPatient.email}</div>}
-                  {displayPatient?.phone && <div className="text-xs text-muted-foreground">{displayPatient.phone}</div>}
-                </div>
-              </div>
+  // Render overlay into document.body to avoid transform/stacking context issues
+  if (!open) return null
 
-              <div>
-                <Label>Select date</Label>
-                <Select value={selectedDate} onValueChange={(v) => setSelectedDate(v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={loadingDates ? 'Loading dates...' : 'Choose a date'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(dates.length === 0 && initialDate) && <SelectItem value={initialDate}>{initialDate}</SelectItem>}
-                    {dates.map(d => (
-                      <SelectItem key={d} value={d}>{d}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Select location</Label>
-                <Select value={selectedLocation} onValueChange={(v) => setSelectedLocation(v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={loadingLocations ? 'Loading locations...' : 'Choose location'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(locations.length === 0 && initialLocation) && <SelectItem value={initialLocation}>{initialLocation}</SelectItem>}
-                    {locations.map(l => (
-                      <SelectItem key={l} value={l}>{l}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedDate && (
-                  <div className="mt-2 text-xs text-muted-foreground">Showing locations available on {selectedDate}</div>
-                )}
-              </div>
-
-              {/* Candidate exact slots for chosen date+location */}
-              <div>
-                <Label>Available times</Label>
-                <div className="mt-2">
-                  {selectedSlotId && !showSlotList ? (
-                    (() => {
-                      const sel = candidateSlots.find(c => c.id === selectedSlotId)
-                      return (
-                        <div className="flex items-center justify-between p-3 border rounded bg-gray-50">
-                          <div>
-                            <div className="text-sm">{sel ? `${sel.start} - ${sel.end}` : 'Selected time'}</div>
-                          </div>
-                          <div>
-                            <Button variant="ghost" size="sm" onClick={() => setShowSlotList(true)}>Change</Button>
-                          </div>
-                        </div>
-                      )
-                    })()
-                  ) : (
-                    <div className="mt-2 space-y-2 max-h-40 overflow-auto border rounded p-2">
-                      {candidateSlots.length === 0 && <div className="text-sm text-muted-foreground">No available slots for selected date/location</div>}
-                      {candidateSlots.map(cs => (
-                        <button key={cs.id} className={`w-full text-left p-2 rounded ${selectedSlotId === cs.id ? 'bg-blue-50 border' : 'hover:bg-gray-50'}`} onClick={() => { setSelectedSlotId(cs.id); setShowSlotList(false); }}>
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm">{`${cs.start} - ${cs.end}`}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <Button className="w-full" onClick={handleConfirm} disabled={!selectedDate || !selectedLocation || rescheduling}>{rescheduling ? 'Rescheduling...' : 'Confirm'}</Button>
-              </div>
-            </div>
-          </aside>
+  const overlay = (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/30" onClick={() => setOpen(false)} />
+      <aside className={`absolute top-0 h-full w-full max-w-sm bg-white shadow-xl transform transition-transform ${open ? 'translate-x-0' : 'translate-x-full'} right-0`}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="text-lg font-semibold">Reschedule appointment</div>
+          <Button variant="ghost" size="icon" onClick={() => setOpen(false)}><X className="h-4 w-4" /></Button>
         </div>
-      )}
-    </>
+        <div className="p-4 space-y-4 overflow-auto">
+          <div>
+            <Label>Patient</Label>
+            <div className="mt-2 p-3 border rounded-md bg-gray-50">
+              <div className="text-sm font-medium">{displayPatient ? `${displayPatient.firstname || ''} ${displayPatient.lastname || ''}`.trim() : 'Unknown patient'}</div>
+              {displayPatient?.email && <div className="text-xs text-muted-foreground">{displayPatient.email}</div>}
+              {displayPatient?.phone && <div className="text-xs text-muted-foreground">{displayPatient.phone}</div>}
+            </div>
+          </div>
+
+          <div>
+            <Label>Select date</Label>
+            <Select value={selectedDate} onValueChange={(v) => setSelectedDate(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder={loadingDates ? 'Loading dates...' : 'Choose a date'} />
+              </SelectTrigger>
+              <SelectContent>
+                {(dates.length === 0 && initialDate) && <SelectItem value={initialDate}>{initialDate}</SelectItem>}
+                {dates.map(d => (
+                  <SelectItem key={d} value={d}>{d}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Select location</Label>
+            <Select value={selectedLocation} onValueChange={(v) => setSelectedLocation(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder={loadingLocations ? 'Loading locations...' : 'Choose location'} />
+              </SelectTrigger>
+              <SelectContent>
+                {(locations.length === 0 && initialLocation) && <SelectItem value={initialLocation}>{initialLocation}</SelectItem>}
+                {locations.map(l => (
+                  <SelectItem key={l} value={l}>{l}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedDate && (
+              <div className="mt-2 text-xs text-muted-foreground">Showing locations available on {selectedDate}</div>
+            )}
+          </div>
+
+          {/* Candidate exact slots for chosen date+location */}
+          <div>
+            <Label>Available times</Label>
+            <div className="mt-2">
+              {selectedSlotId && !showSlotList ? (
+                (() => {
+                  const sel = candidateSlots.find(c => c.id === selectedSlotId)
+                  return (
+                    <div className="flex items-center justify-between p-3 border rounded bg-gray-50">
+                      <div>
+                        <div className="text-sm">{sel ? `${sel.start} - ${sel.end}` : 'Selected time'}</div>
+                      </div>
+                      <div>
+                        <Button variant="ghost" size="sm" onClick={() => setShowSlotList(true)}>Change</Button>
+                      </div>
+                    </div>
+                  )
+                })()
+              ) : (
+                <div className="mt-2 space-y-2 max-h-40 overflow-auto border rounded p-2">
+                  {candidateSlots.length === 0 && <div className="text-sm text-muted-foreground">No available slots for selected date/location</div>}
+                  {candidateSlots.map(cs => (
+                    <button key={cs.id} className={`w-full text-left p-2 rounded ${selectedSlotId === cs.id ? 'bg-blue-50 border' : 'hover:bg-gray-50'}`} onClick={() => { setSelectedSlotId(cs.id); setShowSlotList(false); }}>
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm">{`${cs.start} - ${cs.end}`}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <Button className="w-full" onClick={handleConfirm} disabled={!selectedDate || !selectedLocation || rescheduling}>{rescheduling ? 'Rescheduling...' : 'Confirm'}</Button>
+          </div>
+        </div>
+      </aside>
+    </div>
   )
+
+  return createPortal(overlay, document.body)
 }
