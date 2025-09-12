@@ -889,3 +889,121 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   }
   return { totalNotes: 0, thisWeek: 0, avgProcessingTimeMs: null, activePatients: 0 };
 }
+
+// ---------- Appointments API ----------
+export const appointmentsApi = {
+  async createForUser(userId: string, payload: any): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+    const response = await apiRequest<any>(`/appointments/${userId}`, {
+      method: "POST",
+      data: payload,
+      headers,
+    });
+    if (!response.success) throw new ApiError(500, response.message || "Failed to create appointment");
+    return response.data;
+  },
+  async getForUser(userId: string): Promise<any[]> {
+    const headers = {
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+    const response = await apiRequest<any[]>(`/appointments/${userId}`, {
+      method: "GET",
+      headers,
+    });
+    if (!response.success) throw new ApiError(500, response.message || "Failed to fetch appointments");
+    return response.data || [];
+  },
+  async cancel(appointmentId: string, cancelData: any): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+    // Some backends return HTTP 200 with an error payload (detail / errmsg / code).
+    // Handle that shape here, and retry on transient write-conflict errors.
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const response = await apiRequest<any>(`/appointments/${appointmentId}`, {
+        method: "DELETE",
+        data: cancelData,
+        headers,
+      });
+
+      // apiRequest returns an ApiResponse with `.data` containing the backend payload
+      const raw = response as any
+      const body = raw?.data ?? raw
+
+      // Detect common error shapes returned in body or inside .data
+      const hasError = !!(
+        (body == null ? false : (body.detail || body.errmsg || body.error || body.success === false || body.code))
+      )
+
+      // If no error-like fields, assume success
+      if (!hasError) return body
+
+      // If transient write conflict, retry a few times with backoff
+      const isTransient = (
+        (body && body.code === 112) ||
+        (body && Array.isArray(body.errorLabels) && body.errorLabels.includes('TransientTransactionError')) ||
+        /WriteConflict|TransientTransactionError/i.test(String(body?.detail || body?.errmsg || body?.error || ''))
+      )
+
+      if (isTransient && attempt < maxAttempts) {
+        // small exponential backoff
+        await new Promise(res => setTimeout(res, 150 * attempt))
+        continue
+      }
+
+      // Non-retriable or retries exhausted: throw a real error so UI shows failure
+      const message = String(body?.detail || body?.errmsg || body?.error || body?.message || 'Failed to cancel appointment')
+      throw new ApiError(500, message)
+    }
+    // Should not reach here
+    throw new ApiError(500, 'Failed to cancel appointment')
+  },
+  async reschedule(appointmentId: string, payload: { slot_id: string; patient_id: string }): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const response = await apiRequest<any>(`/appointments/${appointmentId}/reschedule`, {
+        method: "POST",
+        data: payload,
+        headers,
+      });
+
+      const raw = response as any
+      const body = raw?.data ?? raw
+
+      const hasError = !!(
+        (body == null ? false : (body.detail || body.errmsg || body.error || body.success === false || body.code))
+      )
+
+      if (!hasError) return body
+
+      const isTransient = (
+        (body && body.code === 112) ||
+        (body && Array.isArray(body.errorLabels) && body.errorLabels.includes('TransientTransactionError')) ||
+        /WriteConflict|TransientTransactionError/i.test(String(body?.detail || body?.errmsg || body?.error || ''))
+      )
+
+      if (isTransient && attempt < maxAttempts) {
+        await new Promise(res => setTimeout(res, 150 * attempt))
+        continue
+      }
+
+      const message = String(body?.detail || body?.errmsg || body?.error || body?.message || 'Failed to reschedule appointment')
+      throw new ApiError(500, message)
+    }
+    throw new ApiError(500, 'Failed to reschedule appointment')
+  },
+};
