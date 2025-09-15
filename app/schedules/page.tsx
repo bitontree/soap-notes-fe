@@ -1612,8 +1612,7 @@ export default function SchedulesPage() {
                     // Verify status is BOOKED or RESCHEDULED
                     const status = (freshAppt.status || freshAppt.state || freshAppt.appointment_status || '').toString().toUpperCase()
                     if (!(status === 'BOOKED' || status === 'RESCHEDULED' || status === 'RESCHEDULE')) {
-                      toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED or RESCHEDULED appointments can be cancelled.`, variant: "destructive" })
-
+                      toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED or RESCHEDULED appointments can be cancelled.`, variant: "destructive", duration: 3000 })
                       await refreshSlotsAndSchedules()
                       setConfirmDeleteOpen(false)
                       setSlotMenuSlotId(null)
@@ -1638,13 +1637,13 @@ export default function SchedulesPage() {
                     const apptId = freshAppt._id || freshAppt.id || freshAppt.appointment_id
                     await api.appointmentsApi.cancel(apptId, payload)
 
-                    toast({ title: "Deleted", description: "Appointment cancelled successfully" })
+                    toast({ title: "Deleted", description: "Appointment cancelled successfully", duration: 3000 })
                     setConfirmDeleteOpen(false)
                     setSlotMenuSlotId(null)
                     setAppointments(prev => prev.filter(a => String(a.slot_id) !== String(slotMenuSlotId)))
                     await refreshSlotsAndSchedules()
                   } catch (e: any) {
-                    toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive" })
+                    toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive", duration: 3000 })
                   }
                 }}>
                   Delete appointment

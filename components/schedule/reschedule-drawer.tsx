@@ -240,12 +240,12 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
       if (candidate && candidate.schedule_id) payload.schedule_id = String(candidate.schedule_id)
 
       const res = await appointmentsApi.reschedule(appointmentIdToUse, payload)
-      toast({ title: 'Rescheduled', description: res?.message || 'Appointment rescheduled' })
+  toast({ title: 'Rescheduled', description: res?.message || 'Appointment rescheduled', duration: 3000 })
       // call parent refresh if provided
       try { if (typeof onDone === 'function') onDone() } catch (e) { }
       setOpen(false)
     } catch (e: any) {
-      toast({ title: 'Failed', description: e?.message || 'Could not reschedule', variant: 'destructive' })
+      toast({ title: 'Failed', description: e?.message || 'Could not reschedule', variant: 'destructive', duration: 3000 })
     } finally {
       setRescheduling(false)
     }
