@@ -1322,11 +1322,30 @@ export default function SchedulesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Start Date</Label>
-                    <Input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setFormValue("start_date", e.target.value, { shouldDirty: true }) }} />
+                    <Input
+                      type="date"
+                      min={new Date().toISOString().slice(0,10)}
+                      value={startDate}
+                      onChange={e => {
+                        const v = e.target.value
+                        setStartDate(v)
+                        setFormValue("start_date", v, { shouldDirty: true })
+                        // If endDate is before new startDate, clear it
+                        if (endDate && endDate < v) {
+                          setEndDate("")
+                          setFormValue("end_date", "", { shouldDirty: true })
+                        }
+                      }}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>End Date</Label>
-                    <Input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setFormValue("end_date", e.target.value, { shouldDirty: true }) }} />
+                    <Input
+                      type="date"
+                      min={(startDate && startDate > new Date().toISOString().slice(0,10)) ? startDate : new Date().toISOString().slice(0,10)}
+                      value={endDate}
+                      onChange={e => { setEndDate(e.target.value); setFormValue("end_date", e.target.value, { shouldDirty: true }) }}
+                    />
                   </div>
                 </div>
               )}
