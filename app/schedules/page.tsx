@@ -6,7 +6,6 @@ import { useForm } from "react-hook-form"
 import dynamic from "next/dynamic"
 import { format, parseISO } from "date-fns"
 import { Button } from "@/components/ui/button"
-import { X } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,6 +21,7 @@ import timeGridPlugin from "@fullcalendar/timegrid"
 import interactionPlugin from "@fullcalendar/interaction"
 import { AppointmentDrawer } from "../../components/schedule/appointment-drawer"
 import { RescheduleDrawer } from "@/components/schedule/reschedule-drawer"
+import { X } from "lucide-react"
 import { createPortal } from "react-dom"
 
 
@@ -915,7 +915,7 @@ export default function SchedulesPage() {
     }
 
     return events
-  }, [slots, currentView, scheduleDates])
+  }, [slots, currentView,appointments, scheduleDates])
 
   async function handleCreateSchedule() {
     if (!startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0) return
@@ -1095,8 +1095,9 @@ export default function SchedulesPage() {
               }
             }}
             eventClick={(info: any) => {
-              if (currentView !== "dayGridMonth") return
               const props = info?.event?.extendedProps || {}
+              // Month view: existing behavior to open schedule-day editor
+              if (currentView === "dayGridMonth") {
               const scheduleId = props?.scheduleId as string | undefined
               if (!scheduleId) return
               const schedule = schedules.find(s => s.id === scheduleId)
@@ -1143,6 +1144,48 @@ export default function SchedulesPage() {
               setEditingScheduleId(scheduleId)
               setIsEditing(true)
               setDrawerOpen(true)
+                return
+              }
+
+              // Non-month views: individual slot events
+              const status = (props?.status || "").toString().toUpperCase()
+              const isBlocked = !!props?.isBlocked
+              const slotId = props?.slotId || props?.slot_id || props?.slot
+              const slotTime = (props?.start_time as string) || (info?.event?.start ? (info.event.start as Date).toTimeString().slice(0,5) : "")
+              const slotDate = (props?.date as string) || (info?.event?.start ? (info.event.start as Date).toISOString().slice(0,10) : "")
+              const slotLocation = props?.location || ""
+
+              // If slot is blocked, show a simple toast and do nothing
+              if (isBlocked || status === "BLOCKED") {
+                toast({ title: "Blocked", description: "This slot is blocked and cannot be modified.", variant: "destructive" })
+                return
+              }
+
+              // AVAILABLE -> open appointment drawer (pre-fill date/location/time but patient empty)
+              if (status === "AVAILABLE") {
+                // Fill appointment-drawer initial props
+                setApptInitialDate(slotDate)
+                setApptInitialLocation(slotLocation)
+                setApptInitialSlotId(slotId)
+                setApptInitialSlotTime(slotTime)
+                setApptDrawerOpen(true)
+                return
+              }
+
+              // OCCUPIED/BOOKED -> open slot action menu (reschedule/delete)
+              if (status === "OCCUPIED" || status === "BOOKED") {
+                // Position the menu near the click
+                const ev = info?.jsEvent || info?.domEvent
+                const x = ev?.clientX || 0
+                const y = ev?.clientY || 0
+                setSlotMenuPos({ x, y })
+                setSlotMenuSlotId(slotId ? String(slotId) : null)
+                // capture patient index/id if provided
+                setSlotMenuPatientIndex(typeof props?.patientIndex === 'number' ? props.patientIndex : null)
+                setSlotMenuPatientId(props?.patientId ? String(props.patientId) : null)
+                setSlotMenuOpen(true)
+                return
+              }
             }}
             dateClick={(info: any) => {
               if (currentView !== "dayGridMonth") return
@@ -1499,6 +1542,8 @@ export default function SchedulesPage() {
         </div>
       )}
               
+              
+              
       {/* Slot action menu for booked slots (UI only) */}
       {slotMenuOpen && (
         <div
@@ -1587,8 +1632,8 @@ export default function SchedulesPage() {
               </div>
             </div>
           </aside>
-        </div>, document.body
-      )}
+        </div>, document.body)
+      }
     </div>
   )
 }
