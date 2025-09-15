@@ -1609,10 +1609,10 @@ export default function SchedulesPage() {
                       return
                     }
 
-                    // Verify status is BOOKED
+                    // Verify status is BOOKED or RESCHEDULED
                     const status = (freshAppt.status || freshAppt.state || freshAppt.appointment_status || '').toString().toUpperCase()
-                    if (status !== 'BOOKED') {
-                      toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED appointments can be cancelled.`, variant: "destructive" })
+                    if (!(status === 'BOOKED' || status === 'RESCHEDULED' || status === 'RESCHEDULE')) {
+                      toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED or RESCHEDULED appointments can be cancelled.`, variant: "destructive" })
                       await refreshSlotsAndSchedules()
                       setConfirmDeleteOpen(false)
                       setSlotMenuSlotId(null)
