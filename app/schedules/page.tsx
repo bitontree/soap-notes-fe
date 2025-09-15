@@ -137,6 +137,7 @@ export default function SchedulesPage() {
   })
 
   const [appointments, setAppointments] = useState<any[]>([])
+  const [allAppointments, setAllAppointments] = useState<any[]>([])
 
   // Remove cancelled / historical appointments from UI lists so slots only show active bookings
   const sanitizeAppointments = (list: any[] | undefined | null) => {
@@ -216,7 +217,12 @@ export default function SchedulesPage() {
           const userId = user.id || user._id
           if (userId) {
             const appts = await (await import("@/lib/api")).appointmentsApi.getForUser(userId)
-            if (!cancelled) setAppointments(sanitizeAppointments(appts || []))
+            if (!cancelled) {
+              setAllAppointments(appts || [])
+              setAppointments(sanitizeAppointments(appts || []))
+              console.debug('[schedules] fetched appointments count', (appts || []).length)
+              console.debug('[schedules] sample appointment (0):', (appts || [])[0])
+            }
           }
         } catch (e) {
           // ignore appointments fetch errors
@@ -262,9 +268,10 @@ export default function SchedulesPage() {
         const user = JSON.parse(localStorage.getItem("user") || "{}")
         const userId = user.id || user._id
         if (userId) {
-          const appts = await (await import("@/lib/api")).appointmentsApi.getForUser(userId)
-          if (cancelled) return
-          setAppointments(sanitizeAppointments(appts || []))
+            const appts = await (await import("@/lib/api")).appointmentsApi.getForUser(userId)
+            if (cancelled) return
+            setAllAppointments(appts || [])
+            setAppointments(sanitizeAppointments(appts || []))
         }
       } catch (e) {
         // ignore
@@ -322,6 +329,7 @@ export default function SchedulesPage() {
               const appts = await api.appointmentsApi.getForUser(userId)
               if (cancelled) return
               const saneAppts = sanitizeAppointments(appts || [])
+              setAllAppointments(appts || [])
               setAppointments(saneAppts)
 
               // Prefer matching by patient_id when available (slot can have multiple patients)
@@ -549,7 +557,7 @@ export default function SchedulesPage() {
 
   // Map slots/schedule_dates to FullCalendar events
   const events = useMemo(() => {
-    const events: any[] = []
+  const events: any[] = []
 
     if (currentView === "dayGridMonth") {
       // Month view: show one event per schedule_date
@@ -584,6 +592,25 @@ export default function SchedulesPage() {
           list.push(a)
           apptBySlot.set(key, list)
         })
+
+  // Also keep a map including cancelled/historical appointments so we can display them (struck-through)
+      const apptBySlotAll = new Map<string, any[]>()
+        ; (allAppointments || []).forEach((a: any) => {
+          const key = String(a.slot_id)
+          const list = apptBySlotAll.get(key) || []
+          list.push(a)
+          apptBySlotAll.set(key, list)
+        })
+      // deterministic ordering
+      apptBySlotAll.forEach((list, key) => {
+        list.sort((x: any, y: any) => {
+          const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+          const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+          return tx - ty
+        })
+        apptBySlotAll.set(key, list)
+      })
+  console.debug('[schedules] built apptBySlotAll map, keys:', Array.from(apptBySlotAll.keys()).slice(0,10))
 
       // Ensure deterministic ordering per-slot so patientIndex maps are stable.
       // Sort by creation time (created_at / createdAt) ascending so older appointments appear first.
@@ -640,38 +667,54 @@ export default function SchedulesPage() {
 
             const apptsForSlot = apptBySlot.get(String(s.id)) || []
             const apptForIndex = apptsForSlot[i] || null
+            const apptsAllForSlot = apptBySlotAll.get(String(s.id)) || []
+            const apptAllForIndex = apptsAllForSlot[i] || null
 
             // Determine what to show
             let title = ""
             let shouldShow = true
 
-            if (status === "AVAILABLE") {
-              title = "AVL"
-            } else if (status === "OCCUPIED") {
-              // Check if we have patient name
-              if (apptForIndex && (apptForIndex.firstname || apptForIndex.lastname || apptForIndex.patient)) {
-                const fn = apptForIndex.firstname || apptForIndex.patient?.firstname || ""
-                const ln = apptForIndex.lastname || apptForIndex.patient?.lastname || ""
-                const name = `${fn} ${ln}`.trim()
-                if (name) {
-                  title = name
-                } else {
-                  // Occupied but no name - don't show this slot
-                  shouldShow = false
+            // Prefer appointment data from the full list (including cancelled) so we keep names visible
+            const candidateAppt = apptAllForIndex || apptForIndex || null
+
+            if (candidateAppt && (candidateAppt.firstname || candidateAppt.lastname || candidateAppt.patient)) {
+              const fn = candidateAppt.firstname || candidateAppt.patient?.firstname || ""
+              const ln = candidateAppt.lastname || candidateAppt.patient?.lastname || ""
+              const name = `${fn} ${ln}`.trim()
+              if (name) {
+                title = name
+                if (String((candidateAppt.status || candidateAppt.state || candidateAppt.appointment_status || '').toString().toUpperCase()).includes('CANCEL')) {
+                  // log when we're showing a cancelled appointment name on an available slot
+                  console.debug('[schedules] showing cancelled patient name for AVAILABLE slot', s.id, 'index', i, 'name', name)
                 }
+              }
+            } else {
+              // No appointment name available: fall back to availability text or hide
+              if (status === "AVAILABLE") {
+                title = "AVL"
               } else {
-                // Occupied but no appointment data - don't show this slot
+                // OCCUPIED without name
                 shouldShow = false
               }
             }
 
             // Only add event if we should show it
             if (shouldShow) {
+              const isCancelled = !!(apptAllForIndex && String((apptAllForIndex.status || apptAllForIndex.state || apptAllForIndex.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
+              if (isCancelled) console.debug('[schedules] slot', s.id, 'index', i, 'isCancelled true, apptId:', apptAllForIndex?._id || apptAllForIndex?.id)
+              // prefer name from the full list (apptAllForIndex) when available (so cancelled names display)
+              if (!title && apptAllForIndex) {
+                const fn = apptAllForIndex.firstname || apptAllForIndex.patient?.firstname || ""
+                const ln = apptAllForIndex.lastname || apptAllForIndex.patient?.lastname || ""
+                const name = `${fn} ${ln}`.trim()
+                if (name) title = name
+              }
               events.push({
                 id: `${s.id}-${i}`,
                 title,
                 start: `${s.date}T${st}:00`,
                 end: `${s.date}T${et}:00`,
+                classNames: isCancelled ? ['appt-cancelled'] : undefined,
                 backgroundColor: baseColors.backgroundColor,
                 borderColor: baseColors.borderColor,
                 textColor: baseColors.textColor,
@@ -679,12 +722,14 @@ export default function SchedulesPage() {
                   slotId: s.id,
                   patientIndex: i,
                   patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
-                  appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id,
+                  appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id || (apptAllForIndex?._id || apptAllForIndex?.id),
+                  isCancelled,
                   status,
                   location: s.location,
                   scheduleId: s.schedule_id
                 }
               })
+              console.debug('[schedules] pushed event', { slotId: s.id, index: i, title, isCancelled })
             }
           }
         }
@@ -692,7 +737,7 @@ export default function SchedulesPage() {
     }
 
     return events
-  }, [slots, currentView,appointments, scheduleDates])
+  }, [slots, currentView,appointments, allAppointments, scheduleDates])
 
   async function handleCreateSchedule() {
     if (!startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0) return
@@ -817,6 +862,59 @@ export default function SchedulesPage() {
             slotMinTime="07:00:00"
             scrollTime="07:00:00"
             events={events}
+            eventContent={(arg: any) => {
+              try {
+                const isCancelled = !!arg.event.extendedProps?.isCancelled
+                const title = arg.event.title || ''
+                const baseStyle: any = {
+                  display: 'block',
+                  width: '100%',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }
+                if (isCancelled) {
+                  return (
+                    <div className="fc-event-custom-title" style={baseStyle}>
+                      <span style={{ textDecoration: 'line-through', color: '#4b5563', opacity: 0.95, fontWeight: 600 }}>{title}</span>
+                    </div>
+                  )
+                }
+                return (
+                  <div className="fc-event-custom-title" style={baseStyle}>
+                    <span style={{ color: undefined }}>{title}</span>
+                  </div>
+                )
+              } catch (e) {
+                return null
+              }
+            }}
+            eventDidMount={(arg: any) => {
+              try {
+                const cancelled = !!arg.event.extendedProps?.isCancelled
+                // Apply stronger styling directly to the event element as a fallback
+                const el = (arg.el as HTMLElement)
+                if (!el) return
+                if (cancelled) {
+                  // set background/border to muted gray and enforce text color/strike
+                  el.style.backgroundColor = '#f3f4f6'
+                  el.style.borderColor = '#e5e7eb'
+                  el.style.opacity = '1'
+                  // ensure css target class present
+                  el.classList.add('appt-cancelled')
+                  // try to find inner title span and set styles
+                  const inner = el.querySelector('.fc-event-custom-title span') as HTMLElement | null
+                  if (inner) {
+                    inner.style.textDecoration = 'line-through'
+                    inner.style.color = '#374151'
+                    inner.style.opacity = '0.95'
+                    inner.style.fontWeight = '600'
+                  }
+                }
+              } catch (e) {
+                // ignore
+              }
+            }}
             eventDisplay="block"
             datesSet={(arg: any) => {
               const viewType = arg?.view?.type
