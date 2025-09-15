@@ -397,6 +397,229 @@ export default function SchedulesPage() {
     return t
   }
 
+  // Handlers extracted from lengthy inline onClick callbacks
+  async function handleDeleteScheduleClick() {
+    if (!isEditing || !editingScheduleId) return
+    try {
+      await schedulesApi.delete(editingScheduleId!, { scope: operationScope, anchor_date: anchorDate })
+      setDrawerOpen(false)
+      toast({ title: "Deleted", description: "Schedule deleted successfully" })
+      await refreshAll()
+    } catch (e: any) {
+      let code: string | undefined
+      let message: string | undefined
+      let bookedCount: number | undefined
+      if (typeof e?.message === "string") {
+        try {
+          const parsed = JSON.parse(e.message)
+          if (parsed && typeof parsed === "object") {
+            code = (parsed as any).code
+            message = (parsed as any).message
+            bookedCount = (parsed as any).booked_appointments_count || (parsed as any).booked_slots_count
+          }
+        } catch { /* ignore */ }
+      }
+      const detail = e?.response?.data?.detail
+      if (!code && typeof detail === "object") code = (detail as any)?.code
+      if (!message && typeof detail === "object") message = (detail as any)?.message
+      if (!bookedCount && typeof detail === "object") bookedCount = (detail as any)?.booked_appointments_count || (detail as any)?.booked_slots_count
+
+      if (code === "RESCHEDULE_REQUIRED") {
+        const loc = await resolveLocationForAnchor(editingScheduleId!, anchorDate)
+        if (loc) {
+          openRescheduleModal(editingScheduleId!, loc, bookedCount || 0, operationScope, anchorDate)
+        } else {
+          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive" })
+        }
+      } else {
+        toast({ title: "Error", description: message || e?.message || "Failed to delete schedule", variant: "destructive" })
+      }
+    }
+  }
+
+  async function handleUpdateScheduleClick() {
+    if (!editingScheduleId) return
+    try {
+      const payload: Partial<CreateScheduleRequest> = {
+        start_time: startTime,
+        end_time: endTime,
+        slot_duration_minutes: slotDuration,
+        patients_per_slot: patientsPerSlot,
+        days_of_week: daysOfWeek,
+        recurring_interval_weeks: recurringIntervalWeeks,
+      }
+      const res = await schedulesApi.update(editingScheduleId, payload, { scope: operationScope, anchor_date: anchorDate })
+      const updated = (res as any)?.schedule as Schedule | undefined
+      const regenerated = (res as any)?.slots as Slot[] | undefined
+      if (updated) {
+        setSchedules(prev => prev.map(s => (s.id === updated.id ? updated : s)))
+      }
+      if (regenerated) {
+        setSlots(prev => [
+          ...prev.filter(s => s.schedule_id !== editingScheduleId),
+          ...regenerated,
+        ])
+      }
+      await refreshAll()
+      setDrawerOpen(false)
+      toast({ title: "Updated", description: "Schedule updated successfully" })
+    } catch (e: any) {
+      let code: string | undefined
+      let message: string | undefined
+      let bookedCount: number | undefined
+      if (typeof e?.message === "string") {
+        try {
+          const parsed = JSON.parse(e.message)
+          if (parsed && typeof parsed === "object") {
+            code = (parsed as any).code
+            message = (parsed as any).message
+            bookedCount = (parsed as any).booked_appointments_count || (parsed as any).booked_slots_count
+          }
+        } catch { /* ignore */ }
+      }
+      const detail = e?.response?.data?.detail
+      if (!code && typeof detail === "object") code = (detail as any)?.code
+      if (!message && typeof detail === "object") message = (detail as any)?.message
+      if (!bookedCount && typeof detail === "object") bookedCount = (detail as any)?.booked_appointments_count || (detail as any)?.booked_slots_count
+
+      if (code === "RESCHEDULE_REQUIRED") {
+        const loc = await resolveLocationForAnchor(editingScheduleId!, anchorDate)
+        if (loc) {
+          openRescheduleModal(editingScheduleId!, loc, bookedCount || 0, operationScope, anchorDate)
+        } else {
+          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive" })
+        }
+      } else if (code === "RESCHEDULE_REQUIRED_SHRINK_NOT_ALLOWED") {
+        toast({
+          title: "Cannot shrink schedule",
+          description: message || "Cannot shrink date/time while appointments exist. Extend or reschedule instead.",
+          variant: "destructive",
+        })
+      } else if (code === "RESCHEDULE_REQUIRED_RULES_CHANGE_NOT_ALLOWED") {
+        toast({
+          title: "Change not allowed",
+          description: message || "Cannot change slot duration or capacity when appointments already exist. Create a new schedule extension instead.",
+          variant: "destructive",
+        })
+      } else {
+        toast({ title: "Error", description: message || e?.message || "Failed to update schedule", variant: "destructive" })
+      }
+    }
+  }
+
+  function handleDayModalSelect(item: { scheduleId: string; location: string; start: string; end: string }) {
+    const schedule = schedules.find(s => s.id === item.scheduleId)
+    setLocation(item.location)
+    setStartTime(item.start)
+    setEndTime(item.end)
+    if (schedule) {
+      setStartDate(schedule.start_date)
+      setEndDate(schedule.end_date)
+      setSlotDuration(schedule.slot_duration_minutes)
+      setPatientsPerSlot(schedule.patients_per_slot)
+      setDaysOfWeek(schedule.days_of_week)
+      setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
+    }
+    setEditingScheduleId(item.scheduleId)
+    setIsEditing(true)
+    setDayModalOpen(false)
+    setDrawerOpen(true)
+  }
+
+  async function handleSlotMenuReschedule() {
+    if (currentView === "dayGridMonth") {
+      toast({ title: 'Reschedule unavailable', description: 'Reschedule is only available in weekly and daily calendar views', variant: 'destructive' })
+      return
+    }
+    setSlotMenuOpen(false)
+    try {
+      const s = slots.find(x => x.id === slotMenuSlotId)
+      if (!slotMenuPatientId) {
+        toast({ title: 'Missing patient id', description: 'Cannot determine appointment without patient id', variant: 'destructive' })
+        return
+      }
+      setReschedulePayload({ patient: undefined, slot: s, slotId: slotMenuSlotId || undefined, patientId: slotMenuPatientId })
+      setRescheduleOpen(true)
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to open reschedule', variant: 'destructive' })
+    }
+  }
+
+  
+
+  async function handleConfirmDeleteAppointmentClick() {
+    setConfirmDeleteError(undefined)
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}')
+      const userId = user.id || user._id
+      if (!userId) {
+        toast({ title: "Not authorized", description: "Please login to manage appointments", variant: "destructive" })
+        return
+      }
+      const api = await import('@/lib/api')
+      const freshAppts = await api.appointmentsApi.getForUser(userId)
+      const saneAppts = sanitizeAppointments(freshAppts || [])
+      let freshAppt: any = null
+      if (slotMenuPatientId) {
+        freshAppt = saneAppts.find((a: any) => String(a.slot_id) === String(slotMenuSlotId) && String(a.patient_id || a.patient?.id || a.patient?._id) === String(slotMenuPatientId)) || null
+      }
+      if (!freshAppt && typeof slotMenuPatientIndex === 'number') {
+        const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(slotMenuSlotId))
+        list.sort((x: any, y: any) => {
+          const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+          const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+          return tx - ty
+        })
+        freshAppt = list[slotMenuPatientIndex] || null
+      }
+      if (!freshAppt) {
+        const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(slotMenuSlotId))
+        if (list.length) {
+          list.sort((x: any, y: any) => {
+            const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+            const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+            return ty - tx
+          })
+          freshAppt = list[0]
+        }
+      }
+      if (!freshAppt) {
+        toast({ title: "Not found", description: "Appointment not found for this slot (it may have been removed)", variant: "destructive" })
+        await refreshSlotsAndSchedules()
+        setConfirmDeleteOpen(false)
+        setSlotMenuSlotId(null)
+        return
+      }
+      const status = (freshAppt.status || freshAppt.state || freshAppt.appointment_status || '').toString().toUpperCase()
+      if (status !== 'BOOKED') {
+        toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED appointments can be cancelled.`, variant: "destructive" })
+        await refreshSlotsAndSchedules()
+        setConfirmDeleteOpen(false)
+        setSlotMenuSlotId(null)
+        return
+      }
+      if (!confirmDeleteReason) {
+        setConfirmDeleteError('Please select a cancellation reason')
+        return
+      }
+      const payload: any = {
+        patient_id: freshAppt.patient_id || freshAppt.patient?.id || freshAppt.patient?._id,
+        slot_id: freshAppt.slot_id || slotMenuSlotId,
+        reason: confirmDeleteReason
+      }
+      if (confirmDeleteNotes && confirmDeleteNotes.trim() !== '') payload.notes = confirmDeleteNotes.trim()
+      const apptId = freshAppt._id || freshAppt.id || freshAppt.appointment_id
+      await api.appointmentsApi.cancel(apptId, payload)
+      toast({ title: "Deleted", description: "Appointment cancelled successfully" })
+      setConfirmDeleteOpen(false)
+      setSlotMenuSlotId(null)
+      setAppointments(prev => prev.filter(a => String(a.slot_id) !== String(slotMenuSlotId)))
+      await refreshSlotsAndSchedules()
+    } catch (e: any) {
+      toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive" })
+    }
+  }
+
   // Reschedule functions
   async function refreshAll() {
     setLoadingAll(true)
@@ -737,6 +960,8 @@ export default function SchedulesPage() {
 
       // Force calendar refresh
       setSlots(prev => [...prev])
+      // Ensure server state is in sync
+      await refreshAll()
       setDrawerOpen(false)
       console.log("Schedule created; slots added:", slotsToAdd.length)
       toast({
@@ -824,8 +1049,20 @@ export default function SchedulesPage() {
               const from = arg?.view?.currentStart as Date | undefined
               const to = arg?.view?.currentEnd as Date | undefined
               if (from && to) {
-                const fromISO = from.toISOString().slice(0,10)
-                const toISO = to.toISOString().slice(0,10)
+                // For month view, extend the range to include all visible days (including trailing days)
+                let fromISO = from.toISOString().slice(0,10)
+                let toISO = to.toISOString().slice(0,10)
+                
+                if (viewType === "dayGridMonth") {
+                  // Get the actual visible start and end dates including trailing days
+                  const visibleStart = arg?.view?.activeStart as Date | undefined
+                  const visibleEnd = arg?.view?.activeEnd as Date | undefined
+                  if (visibleStart && visibleEnd) {
+                    fromISO = visibleStart.toISOString().slice(0,10)
+                    toISO = visibleEnd.toISOString().slice(0,10)
+                  }
+                }
+                
                 setVisibleFrom(fromISO)
                 setVisibleTo(toISO)
                 ;(async () => {
@@ -995,25 +1232,7 @@ export default function SchedulesPage() {
                   <button
                     key={item.scheduleId}
                     className="w-full text-left border rounded-md p-3 hover:bg-accent"
-                    onClick={() => {
-                      // Prefill drawer for update
-                      const schedule = schedules.find(s => s.id === item.scheduleId)
-                      setLocation(item.location)
-                      setStartTime(item.start)
-                      setEndTime(item.end)
-                      if (schedule) {
-                        setStartDate(schedule.start_date)
-                        setEndDate(schedule.end_date)
-                        setSlotDuration(schedule.slot_duration_minutes)
-                        setPatientsPerSlot(schedule.patients_per_slot)
-                        setDaysOfWeek(schedule.days_of_week)
-                        setRecurringIntervalWeeks(schedule.recurring_interval_weeks)
-                      }
-                      setEditingScheduleId(item.scheduleId)
-                      setIsEditing(true)
-                      setDayModalOpen(false)
-                      setDrawerOpen(true)
-                    }}
+                    onClick={() => handleDayModalSelect(item)}
                   >
                     <div className="text-sm font-medium">{item.location}</div>
                     <div className="text-xs text-muted-foreground">{item.start} - {item.end}</div>
@@ -1048,7 +1267,7 @@ export default function SchedulesPage() {
       {drawerOpen && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
-          <div className="absolute inset-y-0 right-0 w-full max-w-md bg-white shadow-xl flex flex-col">
+          <div className="absolute top-0 right-0 h-screen w-96 bg-white shadow-xl flex flex-col">
             <div className="p-4 border-b flex items-center justify-between">
               <div className="text-lg font-semibold">{isEditing ? "Update Schedule" : "Add Schedule"}</div>
               <Button variant="ghost" size="icon" aria-label="Close" onClick={() => setDrawerOpen(false)}>
@@ -1072,18 +1291,18 @@ export default function SchedulesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Start Time</Label>
-                  <Input placeholder="--:--" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+                  <Input placeholder="--:--" type="time" value={startTime} onChange={e => { const v = e.target.value; setStartTime(v); setFormValue("start_time", v, { shouldDirty: true }) }} />
                 </div>
                 <div className="space-y-2">
                   <Label>End Time</Label>
-                  <Input placeholder="--:--" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+                  <Input placeholder="--:--" type="time" value={endTime} onChange={e => { const v = e.target.value; setEndTime(v); setFormValue("end_time", v, { shouldDirty: true }) }} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Duration (minutes)</Label>
-                  <Select value={String(slotDuration)} onValueChange={(v) => setSlotDuration(Number(v))}>
+                  <Select value={String(slotDuration)} onValueChange={(v) => { const n = Number(v); setSlotDuration(n); setFormValue("slot_duration_minutes", n, { shouldDirty: true }) }}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select duration" />
                     </SelectTrigger>
@@ -1096,7 +1315,7 @@ export default function SchedulesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Patients per slot</Label>
-                  <Select value={String(patientsPerSlot)} onValueChange={(v) => setPatientsPerSlot(Number(v))}>
+                  <Select value={String(patientsPerSlot)} onValueChange={(v) => { const n = Number(v); setPatientsPerSlot(n); setFormValue("patients_per_slot", n, { shouldDirty: true }) }}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select patients per slot" />
                     </SelectTrigger>
@@ -1120,7 +1339,13 @@ export default function SchedulesPage() {
                 <Label>Weekdays</Label>
                 <div className="grid grid-cols-3 gap-2 text-sm">
                   {["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"].map(d => (
-                    <Button key={d} type="button" variant={daysOfWeek.includes(d) ? "secondary" : "outline"} onClick={() => setDaysOfWeek(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}>
+                    <Button key={d} type="button" variant={daysOfWeek.includes(d) ? "secondary" : "outline"} onClick={() => {
+                      setDaysOfWeek(prev => {
+                        const next = prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]
+                        setFormValue("days_of_week", next, { shouldDirty: true })
+                        return next
+                      })
+                    }}>
                       {d.slice(0, 3)}
                     </Button>
                   ))}
@@ -1138,54 +1363,35 @@ export default function SchedulesPage() {
                   placeholder="1"
                 />
                 <div className="text-xs text-muted-foreground">
-                  How often this schedule repeats (1-52 weeks)
+                  How often this schedule repeats (1-4 weeks)
                 </div>
               </div>
+
+              {isEditing && (
+                <div className="space-y-2">
+                  <Label>Scope</Label>
+                  <Select value={operationScope} onValueChange={(v: any) => setOperationScope(v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select scope" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="this_day">This day</SelectItem>
+                      <SelectItem value="subsequent_days">This and subsequent days</SelectItem>
+                      <SelectItem value="later_days">Later days only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="text-xs text-muted-foreground">
+                    Anchor date: {anchorDate || 'Not set'}
+                  </div>
+                </div>
+              )}
 
             </div>
             <div className="p-4 border-t flex gap-2 justify-end">
               {isEditing && (
                 <Button
                   variant="destructive"
-                  onClick={async () => {
-                    try {
-                    // optimistic: simply close; deletion API can be added if provided later
-                    setDrawerOpen(false)
-                      toast({ title: "Deleted", description: "Schedule deleted successfully" })
-                      // Refresh lists to reflect backend state
-                      await refreshAll()
-                    } catch (e: any) {
-                      // Parse structured error to trigger reschedule modal when required
-                      let code: string | undefined
-                      let message: string | undefined
-                      let bookedCount: number | undefined
-                      if (typeof e?.message === "string") {
-                        try {
-                          const parsed = JSON.parse(e.message)
-                          if (parsed && typeof parsed === "object") {
-                            code = (parsed as any).code
-                            message = (parsed as any).message
-                            bookedCount = (parsed as any).booked_slots_count
-                          }
-                        } catch { /* ignore */ }
-                      }
-                      const detail = e?.response?.data?.detail
-                      if (!code && typeof detail === "object") code = (detail as any)?.code
-                      if (!message && typeof detail === "object") message = (detail as any)?.message
-                      if (!bookedCount && typeof detail === "object") bookedCount = (detail as any)?.booked_slots_count
-
-                      if (code === "RESCHEDULE_REQUIRED") {
-                        const loc = await resolveLocationForAnchor(editingScheduleId!, anchorDate)
-                        if (loc) {
-                          openRescheduleModal(editingScheduleId!, loc, bookedCount || 0, operationScope, anchorDate)
-                        } else {
-                          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive" })
-                        }
-                      } else {
-                        toast({ title: "Error", description: message || e?.message || "Failed to delete schedule", variant: "destructive" })
-                      }
-                    }
-                  }}
+                  onClick={handleDeleteScheduleClick}
                 >
                   Delete
                 </Button>
@@ -1193,81 +1399,8 @@ export default function SchedulesPage() {
               <Button variant="outline" onClick={() => setDrawerOpen(false)}>Close</Button>
               {isEditing ? (
                 <Button
-                  onClick={async () => {
-                    if (!editingScheduleId) return
-                    try {
-                      // For update: do not send day range or location
-                      const payload: Partial<CreateScheduleRequest> = {
-                        start_time: startTime,
-                        end_time: endTime,
-                        slot_duration_minutes: slotDuration,
-                        patients_per_slot: patientsPerSlot,
-                        days_of_week: daysOfWeek,
-                        recurring_interval_weeks: recurringIntervalWeeks,
-                      }
-                      const res = await schedulesApi.update(editingScheduleId, payload)
-                      const updated = (res as any)?.schedule as Schedule | undefined
-                      const regenerated = (res as any)?.slots as Slot[] | undefined
-                      if (updated) {
-                        setSchedules(prev => prev.map(s => (s.id === updated.id ? updated : s)))
-                      }
-                      if (regenerated) {
-                        // replace slots belonging to this schedule
-                        setSlots(prev => [
-                          ...prev.filter(s => s.schedule_id !== editingScheduleId),
-                          ...regenerated,
-                        ])
-                      }
-                      setDrawerOpen(false)
-                      toast({ title: "Updated", description: "Schedule updated successfully" })
-                    } catch (e: any) {
-                      // Check if this is a reschedule required error
-                      let code: string | undefined
-                      let message: string | undefined
-                      let bookedCount: number | undefined
-                      
-                      // Parse ApiError.message JSON if present
-                      if (typeof e?.message === "string") {
-                        try {
-                          const parsed = JSON.parse(e.message)
-                          if (parsed && typeof parsed === "object") {
-                            code = (parsed as any).code
-                            message = (parsed as any).message
-                            bookedCount = (parsed as any).booked_slots_count
-                          }
-                        } catch { /* ignore */ }
-                      }
-                      
-                      const detail = e?.response?.data?.detail
-                      if (!code && typeof detail === "object") code = (detail as any)?.code
-                      if (!message && typeof detail === "object") message = (detail as any)?.message
-                      if (!bookedCount && typeof detail === "object") bookedCount = (detail as any)?.booked_slots_count
-                      
-                      if (code === "RESCHEDULE_REQUIRED") {
-                        const loc = await resolveLocationForAnchor(editingScheduleId!, anchorDate)
-                        if (loc) {
-                          openRescheduleModal(editingScheduleId!, loc, bookedCount || 0, operationScope, anchorDate)
-                        } else {
-                          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive" })
-                        }
-                      } else if (code === "RESCHEDULE_REQUIRED_SHRINK_NOT_ALLOWED") {
-                        toast({
-                          title: "Cannot shrink schedule",
-                          description: message || "Cannot shrink date/time while appointments exist. Extend or reschedule instead.",
-                          variant: "destructive",
-                        })
-                      } else if (code === "RESCHEDULE_REQUIRED_RULES_CHANGE_NOT_ALLOWED") {
-                        toast({
-                          title: "Change not allowed",
-                          description: message || "Cannot change slot duration or capacity when appointments already exist. Create a new schedule extension instead.",
-                          variant: "destructive",
-                        })
-                      } else {
-                        toast({ title: "Error", description: message || e?.message || "Failed to update schedule", variant: "destructive" })
-                      }
-                    }
-                  }}
-                  disabled={!startTime || !endTime || !location}
+                  onClick={handleUpdateScheduleClick}
+                  disabled={!startTime || !endTime || !location || !isDirty}
                 >
                   Update Schedule
                 </Button>
@@ -1361,11 +1494,11 @@ export default function SchedulesPage() {
                   </div>
                 </div>
               )}
-            </div>
-          </div>
+                </div>
+              </div>
         </div>
       )}
-      
+              
       {/* Slot action menu for booked slots (UI only) */}
       {slotMenuOpen && (
         <div
@@ -1380,32 +1513,7 @@ export default function SchedulesPage() {
                 currentView === "dayGridMonth" && "opacity-50 cursor-not-allowed"
               )}
               disabled={currentView === "dayGridMonth"}
-              onClick={async () => {
-                // Only allow reschedule in weekly and daily views
-                if (currentView === "dayGridMonth") {
-                  toast({
-                    title: 'Reschedule unavailable',
-                    description: 'Reschedule is only available in weekly and daily calendar views',
-                    variant: 'destructive'
-                  })
-                  return
-                }
-
-                // Open the reschedule drawer; do NOT resolve appointment id here. Only allow lookup by slotId + patientId
-                setSlotMenuOpen(false)
-                try {
-                  const s = slots.find(x => x.id === slotMenuSlotId)
-                  // require patient id to be present for strict lookup
-                  if (!slotMenuPatientId) {
-                    toast({ title: 'Missing patient id', description: 'Cannot determine appointment without patient id', variant: 'destructive' })
-                    return
-                  }
-                  setReschedulePayload({ patient: undefined, slot: s, slotId: slotMenuSlotId || undefined, patientId: slotMenuPatientId })
-                  setRescheduleOpen(true)
-                } catch (e: any) {
-                  toast({ title: 'Error', description: e?.message || 'Failed to open reschedule', variant: 'destructive' })
-                }
-              }}
+              onClick={handleSlotMenuReschedule}
             >
               Reschedule
             </button>
@@ -1473,96 +1581,7 @@ export default function SchedulesPage() {
               </div>
 
               <div className="pt-2">
-                <Button className="w-full" variant="destructive" onClick={async () => {
-                  setConfirmDeleteError(undefined)
-                  try {
-                    const user = JSON.parse(localStorage.getItem('user') || '{}')
-                    const userId = user.id || user._id
-                    if (!userId) {
-                      toast({ title: "Not authorized", description: "Please login to manage appointments", variant: "destructive" })
-                      return
-                    }
-
-                    const api = await import('@/lib/api')
-                    // Fetch freshest appointments for this user and ignore cancelled/historical records
-                    const freshAppts = await api.appointmentsApi.getForUser(userId)
-                    const saneAppts = sanitizeAppointments(freshAppts || [])
-
-                    // Prefer matching by patient_id when available (slot can have multiple patients)
-                    let freshAppt: any = null
-                    if (slotMenuPatientId) {
-                      freshAppt = saneAppts.find((a: any) => String(a.slot_id) === String(slotMenuSlotId) && String(a.patient_id || a.patient?.id || a.patient?._id) === String(slotMenuPatientId)) || null
-                    }
-
-                    // If not found and patientIndex was captured, pick the appointment at that index after deterministic ordering
-                    if (!freshAppt && typeof slotMenuPatientIndex === 'number') {
-                      const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(slotMenuSlotId))
-                      list.sort((x: any, y: any) => {
-                        const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
-                        const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
-                        return tx - ty
-                      })
-                      freshAppt = list[slotMenuPatientIndex] || null
-                    }
-
-                    // Final fallback: pick the most-recent BOOKED appointment for this slot (by created_at desc)
-                    if (!freshAppt) {
-                      const list = (saneAppts || []).filter((a: any) => String(a.slot_id) === String(slotMenuSlotId))
-                      if (list.length) {
-                        list.sort((x: any, y: any) => {
-                          const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
-                          const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
-                          return ty - tx
-                        })
-                        freshAppt = list[0]
-                      }
-                    }
-
-                    if (!freshAppt) {
-                      toast({ title: "Not found", description: "Appointment not found for this slot (it may have been removed)", variant: "destructive" })
-                      await refreshSlotsAndSchedules()
-                      setConfirmDeleteOpen(false)
-                      setSlotMenuSlotId(null)
-                      return
-                    }
-
-                    // Verify status is BOOKED
-                    const status = (freshAppt.status || freshAppt.state || freshAppt.appointment_status || '').toString().toUpperCase()
-                    if (status !== 'BOOKED') {
-                      toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED appointments can be cancelled.`, variant: "destructive" })
-                      await refreshSlotsAndSchedules()
-                      setConfirmDeleteOpen(false)
-                      setSlotMenuSlotId(null)
-                      return
-                    }
-
-                    // require reason
-                    if (!confirmDeleteReason) {
-                      setConfirmDeleteError('Please select a cancellation reason')
-                      return
-                    }
-
-                    // Build payload including patient_id and slot_id (so backend has full context)
-                    const payload: any = {
-                      patient_id: freshAppt.patient_id || freshAppt.patient?.id || freshAppt.patient?._id,
-                      slot_id: freshAppt.slot_id || slotMenuSlotId,
-                      reason: confirmDeleteReason
-                    }
-                    if (confirmDeleteNotes && confirmDeleteNotes.trim() !== '') payload.notes = confirmDeleteNotes.trim()
-
-                    // Use the appointment's id when calling cancel
-                    const apptId = freshAppt._id || freshAppt.id || freshAppt.appointment_id
-                    await api.appointmentsApi.cancel(apptId, payload)
-
-                    toast({ title: "Deleted", description: "Appointment cancelled successfully" })
-                    setConfirmDeleteOpen(false)
-                    setSlotMenuSlotId(null)
-                    setAppointments(prev => prev.filter(a => String(a.slot_id) !== String(slotMenuSlotId)))
-                    await refreshSlotsAndSchedules()
-                  } catch (e: any) {
-                    toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive" })
-                  }
-                }}>
+                <Button className="w-full" variant="destructive" onClick={handleConfirmDeleteAppointmentClick}>
                   Delete appointment
                 </Button>
               </div>
