@@ -99,11 +99,53 @@ interface SOAPNotesResponse {
   };
 }
 
+// ---------- Schedules & Slots Types ----------
+export interface CreateScheduleRequest {
+  start_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  patients_per_slot: number;
+  location: string;
+  days_of_week: string[];
+  recurring_interval_weeks: number;
+}
+
+export interface Schedule {
+  id: string;
+  start_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  patients_per_slot: number;
+  location: string;
+  days_of_week: string[];
+  recurring_interval_weeks: number;
+}
+
+export interface Slot {
+  id: string;
+  schedule_id: string;
+  doctor_id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  max_patients: number;
+  current_patients: number;
+  status: "AVAILABLE" | "FULL" | "BLOCKED";
+  location: string;
+}
+
 // ---------- Error Class ----------
 
 class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
+  constructor(public status: number, message: any) {
+    const normalized = typeof message === "string"
+      ? message
+      : (() => { try { return JSON.stringify(message) } catch { return String(message) } })();
+    super(normalized);
     this.name = "ApiError";
   }
 }
@@ -601,6 +643,143 @@ export const soapApi = {
   },
 };
 
+// ---------- Schedules & Slots API ----------
+export const schedulesApi = {
+  async list(): Promise<Schedule[]>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<{ schedules: Schedule[] }>(
+      "/schedules/",
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+    const payload = (res.data as any) || {};
+    return payload.schedules ?? (Array.isArray(payload) ? payload : []);
+  },
+
+  async create(data: CreateScheduleRequest): Promise<{ schedule: Schedule; slots?: Slot[] }>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{ schedule: Schedule; slots?: Slot[] }>(
+      "/schedules/",
+      { method: "POST", data, headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+
+    return response.data as any;
+  },
+
+  async update(
+    scheduleId: string,
+    data: Partial<CreateScheduleRequest>,
+    opts?: { scope?: "this_day" | "subsequent_days" | "later_days"; anchor_date?: string }
+  ): Promise<{ schedule: Schedule; slots?: Slot[] }>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const scope = opts?.scope ? `scope=${encodeURIComponent(opts.scope)}` : "";
+    const anchor = opts?.anchor_date ? `anchor_date=${encodeURIComponent(opts.anchor_date)}` : "";
+    const qs = [scope, anchor].filter(Boolean).join("&");
+
+    const response = await apiRequest<{ schedule: Schedule; slots?: Slot[] }>(
+      `/schedules/${scheduleId}${qs ? `?${qs}` : ""}`,
+      { method: "PUT", data, headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+
+    return response.data as any;
+  },
+
+  async getSlotsForSchedule(scheduleId: string): Promise<Slot[]>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const res = await apiRequest<{ slots: Slot[] }>(
+      `/schedules/${scheduleId}/slots`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders } }
+    );
+    const payload = (res.data as any) || {};
+    return payload.slots ?? (Array.isArray(payload) ? payload : []);
+  },
+
+  async delete(
+    scheduleId: string,
+    opts?: { scope?: "this_day" | "subsequent_days" | "later_days"; anchor_date?: string }
+  ): Promise<void> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const scope = opts?.scope ? `scope=${encodeURIComponent(opts.scope)}` : "";
+    const anchor = opts?.anchor_date ? `anchor_date=${encodeURIComponent(opts.anchor_date)}` : "";
+    const qs = [scope, anchor].filter(Boolean).join("&");
+
+    await apiRequest(`/schedules/${scheduleId}${qs ? `?${qs}` : ""}` as any, {
+      method: "DELETE",
+      headers: { ...authHeaders, ...apiKeyHeaders },
+    });
+  },
+
+  async getDatesWithSlots(location: string, fromDate: string, days: number = 30, scheduleId?: string): Promise<Array<{date: string; available_slots: number}>> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{dates: Array<{date: string; available_slots: number}>}>(
+      `/schedules/locations/${encodeURIComponent(location)}/dates-with-slots?from_date=${fromDate}&days=${days}`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { schedule_id: scheduleId } }
+    );
+    return response.data?.dates || [];
+  },
+
+  async bulkReschedule(
+    scheduleId: string,
+    targetDate: string,
+    location: string,
+    opts?: { scope?: "this_day" | "subsequent_days" | "later_days"; anchor_date?: string }
+  ): Promise<{
+    rescheduledCount: number;
+    remainingCount: number;
+    conflicts: any[];
+    moved: Array<{appointment_id: string; new_slot_id: string; date: string; location: string}>;
+  }> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+
+    const response = await apiRequest<{
+      rescheduledCount: number;
+      remainingCount: number;
+      conflicts: any[];
+      moved: Array<{appointment_id: string; new_slot_id: string; date: string; location: string}>;
+    }>(
+      "/appointments/reschedule/bulk",
+      { 
+        method: "POST", 
+        data: { schedule_id: scheduleId, date: targetDate, location, scope: opts?.scope, anchor_date: opts?.anchor_date },
+        headers: { ...authHeaders, ...apiKeyHeaders } 
+      }
+    );
+    return response.data!;
+  },
+  
+  // ------- Range-based fetching (new) -------
+  async getScheduleDatesRange(fromDate: string, toDate: string): Promise<Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<{ dates: Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }> }>(
+      `/schedules/schedule-dates`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { from_date: fromDate, to_date: toDate } }
+    );
+    return (res.data as any)?.dates ?? [];
+  },
+
+  async getSlotsRange(fromDate: string, toDate: string): Promise<Slot[]>{
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<{ slots: Slot[] }>(
+      `/schedules/slots`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { from_date: fromDate, to_date: toDate } }
+    );
+    return (res.data as any)?.slots ?? [];
+  },
+};
+
 // ---------- Reports API (Biomarkers) ----------
 
 export interface BiomarkerReportResponse {
@@ -710,3 +889,121 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   }
   return { totalNotes: 0, thisWeek: 0, avgProcessingTimeMs: null, activePatients: 0 };
 }
+
+// ---------- Appointments API ----------
+export const appointmentsApi = {
+  async createForUser(userId: string, payload: any): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+    const response = await apiRequest<any>(`/appointments/${userId}`, {
+      method: "POST",
+      data: payload,
+      headers,
+    });
+    if (!response.success) throw new ApiError(500, response.message || "Failed to create appointment");
+    return response.data;
+  },
+  async getForUser(userId: string): Promise<any[]> {
+    const headers = {
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+    const response = await apiRequest<any[]>(`/appointments/${userId}`, {
+      method: "GET",
+      headers,
+    });
+    if (!response.success) throw new ApiError(500, response.message || "Failed to fetch appointments");
+    return response.data || [];
+  },
+  async cancel(appointmentId: string, cancelData: any): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+    // Some backends return HTTP 200 with an error payload (detail / errmsg / code).
+    // Handle that shape here, and retry on transient write-conflict errors.
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const response = await apiRequest<any>(`/appointments/${appointmentId}`, {
+        method: "DELETE",
+        data: cancelData,
+        headers,
+      });
+
+      // apiRequest returns an ApiResponse with `.data` containing the backend payload
+      const raw = response as any
+      const body = raw?.data ?? raw
+
+      // Detect common error shapes returned in body or inside .data
+      const hasError = !!(
+        (body == null ? false : (body.detail || body.errmsg || body.error || body.success === false || body.code))
+      )
+
+      // If no error-like fields, assume success
+      if (!hasError) return body
+
+      // If transient write conflict, retry a few times with backoff
+      const isTransient = (
+        (body && body.code === 112) ||
+        (body && Array.isArray(body.errorLabels) && body.errorLabels.includes('TransientTransactionError')) ||
+        /WriteConflict|TransientTransactionError/i.test(String(body?.detail || body?.errmsg || body?.error || ''))
+      )
+
+      if (isTransient && attempt < maxAttempts) {
+        // small exponential backoff
+        await new Promise(res => setTimeout(res, 150 * attempt))
+        continue
+      }
+
+      // Non-retriable or retries exhausted: throw a real error so UI shows failure
+      const message = String(body?.detail || body?.errmsg || body?.error || body?.message || 'Failed to cancel appointment')
+      throw new ApiError(500, message)
+    }
+    // Should not reach here
+    throw new ApiError(500, 'Failed to cancel appointment')
+  },
+  async reschedule(appointmentId: string, payload: { slot_id: string; patient_id: string }): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const response = await apiRequest<any>(`/appointments/${appointmentId}/reschedule`, {
+        method: "POST",
+        data: payload,
+        headers,
+      });
+
+      const raw = response as any
+      const body = raw?.data ?? raw
+
+      const hasError = !!(
+        (body == null ? false : (body.detail || body.errmsg || body.error || body.success === false || body.code))
+      )
+
+      if (!hasError) return body
+
+      const isTransient = (
+        (body && body.code === 112) ||
+        (body && Array.isArray(body.errorLabels) && body.errorLabels.includes('TransientTransactionError')) ||
+        /WriteConflict|TransientTransactionError/i.test(String(body?.detail || body?.errmsg || body?.error || ''))
+      )
+
+      if (isTransient && attempt < maxAttempts) {
+        await new Promise(res => setTimeout(res, 150 * attempt))
+        continue
+      }
+
+      const message = String(body?.detail || body?.errmsg || body?.error || body?.message || 'Failed to reschedule appointment')
+      throw new ApiError(500, message)
+    }
+    throw new ApiError(500, 'Failed to reschedule appointment')
+  },
+};

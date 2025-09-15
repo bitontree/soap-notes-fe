@@ -181,6 +181,9 @@ export default function DashboardPage() {
               <CardDescription>Start your medical documentation workflow</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                {/* Quick action buttons only (Appointment drawer moved to schedules page) */}
+              </div>
               <Link href="/generate">
                 <Button className="w-full justify-start gap-2">
                   <FileText className="h-4 w-4" />
