@@ -1613,6 +1613,7 @@ export default function SchedulesPage() {
                     const status = (freshAppt.status || freshAppt.state || freshAppt.appointment_status || '').toString().toUpperCase()
                     if (!(status === 'BOOKED' || status === 'RESCHEDULED' || status === 'RESCHEDULE')) {
                       toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED or RESCHEDULED appointments can be cancelled.`, variant: "destructive" })
+
                       await refreshSlotsAndSchedules()
                       setConfirmDeleteOpen(false)
                       setSlotMenuSlotId(null)
