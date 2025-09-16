@@ -87,4 +87,41 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* cancelled appointment visual: target FullCalendar event title elements */
+  .appt-cancelled .fc-event-title,
+  .fc-event.appt-cancelled .fc-event-title,
+  .appt-cancelled .fc-event-main-frame,
+  .fc-event.appt-cancelled .fc-event-main-frame {
+    text-decoration: line-through;
+    opacity: 0.8;
+  }
+  /* Custom renderer wrapper — force styles as fallback */
+  .fc-event-custom-title span {
+    /* ensure strong visibility even if FullCalendar theme overrides */
+    text-decoration: inherit !important;
+  }
+  /* Force cancelled styling on FullCalendar event elements as a last resort */
+  .fc-event.appt-cancelled,
+  .fc-event .appt-cancelled {
+    background-color: #f3f4f6 !important;
+    border-color: #e5e7eb !important;
+    color: #374151 !important;
+  }
+  .fc-event.appt-cancelled * {
+    text-decoration: line-through !important;
+    text-decoration-thickness: 2px !important;
+    -webkit-text-decoration-thickness: 2px !important;
+  }
+  /* Draw a faint line across the event block to make cancellation obvious even when text-overflow hides the name */
+  .fc-event.appt-cancelled::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 50%;
+    height: 2px;
+    background: rgba(55,65,81,0.9);
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
 }

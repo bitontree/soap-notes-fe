@@ -264,7 +264,7 @@ const handleConfirm = () => {
       const userId = user.id || user._id;
       const res = await appointmentsApi.createForUser(userId, payload);
 
-      toast({ title: "Appointment confirmed", description: `Appointment booked successfully.` });
+  toast({ title: "Appointment confirmed", description: `Appointment booked successfully.`, duration: 3000 });
       try { if (typeof onBooked === "function") onBooked(); } catch (e) {}
       setOpen(false);
       setSelected(null);
@@ -273,7 +273,7 @@ const handleConfirm = () => {
       setSlotId(undefined);
       setSlotTime(undefined);
     } catch (e: any) {
-      toast({ title: "Booking failed", description: e?.message || "Could not book appointment", variant: "destructive" });
+  toast({ title: "Booking failed", description: e?.message || "Could not book appointment", variant: "destructive", duration: 3000 });
     } finally {
       setBooking(false);
     }
