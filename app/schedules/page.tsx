@@ -54,6 +54,9 @@ export default function SchedulesPage() {
   const [recurringIntervalWeeks, setRecurringIntervalWeeks] = useState<number>(1)
 
   const [creating, setCreating] = useState(false)
+  const [updatingSchedule, setUpdatingSchedule] = useState(false)
+  const [deletingSchedule, setDeletingSchedule] = useState(false)
+  const [deletingAppointment, setDeletingAppointment] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [slots, setSlots] = useState<Slot[]>([])
   const [scheduleDates, setScheduleDates] = useState<Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>([])
@@ -408,10 +411,11 @@ export default function SchedulesPage() {
   // Handlers extracted from lengthy inline onClick callbacks
   async function handleDeleteScheduleClick() {
     if (!isEditing || !editingScheduleId) return
+    setDeletingSchedule(true)
     try {
       await schedulesApi.delete(editingScheduleId!, { scope: operationScope, anchor_date: anchorDate })
       setDrawerOpen(false)
-      toast({ title: "Deleted", description: "Schedule deleted successfully" })
+      toast({ title: "Deleted", description: "Schedule deleted successfully", duration: 2000 })
       await refreshAll()
     } catch (e: any) {
       let code: string | undefined
@@ -437,16 +441,19 @@ export default function SchedulesPage() {
         if (loc) {
           openRescheduleModal(editingScheduleId!, loc, bookedCount || 0, operationScope, anchorDate)
         } else {
-          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive" })
+          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive", duration: 2000 })
         }
       } else {
-        toast({ title: "Error", description: message || e?.message || "Failed to delete schedule", variant: "destructive" })
+        toast({ title: "Error", description: message || e?.message || "Failed to delete schedule", variant: "destructive", duration: 2000 })
       }
+    } finally {
+      setDeletingSchedule(false)
     }
   }
 
   async function handleUpdateScheduleClick() {
     if (!editingScheduleId) return
+    setUpdatingSchedule(true)
     try {
       const payload: Partial<CreateScheduleRequest> = {
         start_time: startTime,
@@ -470,7 +477,7 @@ export default function SchedulesPage() {
       }
       await refreshAll()
       setDrawerOpen(false)
-      toast({ title: "Updated", description: "Schedule updated successfully" })
+      toast({ title: "Updated", description: "Schedule updated successfully", duration: 2000 })
     } catch (e: any) {
       let code: string | undefined
       let message: string | undefined
@@ -495,7 +502,7 @@ export default function SchedulesPage() {
         if (loc) {
           openRescheduleModal(editingScheduleId!, loc, bookedCount || 0, operationScope, anchorDate)
         } else {
-          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive" })
+          toast({ title: "Error", description: message || "Location not found for rescheduling", variant: "destructive", duration: 2000 })
         }
       } else if (code === "RESCHEDULE_REQUIRED_SHRINK_NOT_ALLOWED") {
         toast({
@@ -510,9 +517,12 @@ export default function SchedulesPage() {
           variant: "destructive",
         })
       } else {
-        toast({ title: "Error", description: message || e?.message || "Failed to update schedule", variant: "destructive" })
+        toast({ title: "Error", description: message || e?.message || "Failed to update schedule", variant: "destructive", duration: 2000 })
       }
+    } finally {
+      setUpdatingSchedule(false)
     }
+
   }
 
   function handleDayModalSelect(item: { scheduleId: string; location: string; start: string; end: string }) {
@@ -557,6 +567,7 @@ export default function SchedulesPage() {
 
   async function handleConfirmDeleteAppointmentClick() {
     setConfirmDeleteError(undefined)
+    setDeletingAppointment(true)
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}')
       const userId = user.id || user._id
@@ -618,13 +629,16 @@ export default function SchedulesPage() {
       if (confirmDeleteNotes && confirmDeleteNotes.trim() !== '') payload.notes = confirmDeleteNotes.trim()
       const apptId = freshAppt._id || freshAppt.id || freshAppt.appointment_id
       await api.appointmentsApi.cancel(apptId, payload)
-      toast({ title: "Deleted", description: "Appointment cancelled successfully" })
+      toast({ title: "Deleted", description: "Appointment cancelled successfully", duration: 2000 })
       setConfirmDeleteOpen(false)
       setSlotMenuSlotId(null)
       setAppointments(prev => prev.filter(a => String(a.slot_id) !== String(slotMenuSlotId)))
       await refreshSlotsAndSchedules()
     } catch (e: any) {
-      toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive" })
+      toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive", duration: 2000 })
+    }
+    finally {
+      setDeletingAppointment(false)
     }
   }
 
@@ -1011,7 +1025,7 @@ export default function SchedulesPage() {
       console.log("Schedule created; slots added:", slotsToAdd.length)
       toast({
         title: "Success",
-        description: `Schedule created successfully — ${slotsToAdd.length} slots added`,
+        description: `Schedule created successfully`,
       })
     } catch (e: any) {
       // Provide a clearer message for duplicate/transaction write conflicts
@@ -1548,24 +1562,25 @@ export default function SchedulesPage() {
 
             </div>
             <div className="p-4 border-t flex gap-2 justify-end">
-              {isEditing && (
-                <Button
-                  variant="destructive"
-                  onClick={handleDeleteScheduleClick}
-                >
-                  Delete
-                </Button>
-              )}
+                    {isEditing && (
+                      <Button
+                        variant="destructive"
+                        onClick={handleDeleteScheduleClick}
+                        disabled={deletingSchedule}
+                      >
+                        {deletingSchedule ? "Deleting......" : "Delete"}
+                      </Button>
+                    )}
               <Button variant="outline" onClick={() => setDrawerOpen(false)}>Close</Button>
               {isEditing ? (
                 <Button
                   onClick={handleUpdateScheduleClick}
-                  disabled={!startTime || !endTime || !location || !isDirty}
+                  disabled={updatingSchedule || !startTime || !endTime || !location || !isDirty}
                 >
-                  Update Schedule
+                  {updatingSchedule ? "Updating...." : "Update Schedule"}
                 </Button>
               ) : (
-                <Button onClick={handleCreateSchedule} disabled={creating || !startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0}>{creating ? "Adding..." : "Add Schedule"}</Button>
+                <Button onClick={handleCreateSchedule} disabled={creating || !startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0}>{creating ? "Adding....." : "Add Schedule"}</Button>
               )}
             </div>
           </div>
@@ -1743,8 +1758,8 @@ export default function SchedulesPage() {
               </div>
 
               <div className="pt-2">
-                <Button className="w-full" variant="destructive" onClick={handleConfirmDeleteAppointmentClick}>
-                  Delete appointment
+                <Button className="w-full" variant="destructive" onClick={handleConfirmDeleteAppointmentClick} disabled={deletingAppointment}>
+                  {deletingAppointment ? "Deleting......" : "Delete appointment"}
                 </Button>
               </div>
             </div>

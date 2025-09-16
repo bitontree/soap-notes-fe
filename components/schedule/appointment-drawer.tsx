@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast"
 import { authApi, schedulesApi } from "@/lib/api"
 import { appointmentsApi } from "@/lib/api"
 import { parseISO, isValid, format, differenceInYears } from 'date-fns'
+// Use country-list-with-dial-code-and-flag package (installed)
+import CountryList from 'country-list-with-dial-code-and-flag'
 
 type Props = {
   open?: boolean
@@ -49,10 +51,38 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const [newFirstname, setNewFirstname] = React.useState("")
   const [newLastname, setNewLastname] = React.useState("")
   const [newDobIso, setNewDobIso] = React.useState("") // yyyy-MM-dd for API
+  const [newPhone, setNewPhone] = React.useState("")
+  const [newEmail, setNewEmail] = React.useState("")
+  const [newPhoneCountry, setNewPhoneCountry] = React.useState("+91")
   const [newGender, setNewGender] = React.useState("")
   const [creatingPatient, setCreatingPatient] = React.useState(false)
   const [booking, setBooking] = React.useState(false)
   const searchRef = React.useRef<HTMLInputElement | null>(null)
+
+  // Reset inline new-patient fields whenever the inline form is opened
+  React.useEffect(() => {
+    if (showAddPatientForm) {
+      setNewFirstname("")
+      setNewLastname("")
+      setNewDobIso("")
+      setNewPhone("")
+      setNewEmail("")
+      setNewPhoneCountry("+91")
+      setNewGender("")
+    }
+  }, [showAddPatientForm])
+
+  // Derived validation state for enabling the Create button
+  const phoneDigits = (newPhone || '').replace(/[^0-9]/g, '')
+  const isPhoneValid = phoneDigits.length >= 5 && phoneDigits.length <= 11
+  const isEmailValid = newEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)
+  const isDobValid = (() => {
+    if (!newDobIso) return false
+    const m = newDobIso.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+    if (!m) return false
+    try { const dt = parseISO(newDobIso); return isValid(dt) } catch { return false }
+  })()
+  const canCreate = Boolean(newFirstname.trim() && newLastname.trim() && isPhoneValid && isEmailValid && isDobValid && newGender)
 
   // Load patients when drawer opens and sync initial props into local state
   React.useEffect(() => {
@@ -64,7 +94,7 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
         const list = await authApi.getPatients()
         if (!cancelled) setPatients(list || [])
       } catch (e: any) {
-        toast({ title: "Failed to load patients", description: e?.message || "Please try again", variant: "destructive" })
+        toast({ title: "Failed to load patients", description: e?.message || "Please try again", variant: "destructive", duration: 2000 })
       } finally {
         if (!cancelled) setLoadingPatients(false)
       }
@@ -98,7 +128,7 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
           const list = await authApi.getPatients()
           if (!cancelled) setPatients(list || [])
         } catch (e: any) {
-          toast({ title: "Search failed", description: e?.message || "Could not search patients", variant: "destructive" })
+          toast({ title: "Search failed", description: e?.message || "Could not search patients", variant: "destructive", duration: 2000 })
         } finally {
           setLoadingPatients(false)
         }
@@ -114,48 +144,89 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   return (`${p.firstname} ${p.lastname}`.toLowerCase().includes(q))
   })
 
+  // Build country list from installed package
+  const allCountries = React.useMemo(() => {
+    const list = CountryList.getAll()
+    return list.map((c: any) => ({ code: c.code, callingCode: c.dial_code, label: `${c.name} (${c.dial_code})` }))
+  }, [])
+
   const handleAddPatient = async () => {
     // legacy quick-add via search box
     const name = query.trim()
-    if (!name) { toast({ title: "Enter name", description: "Type a name to add", variant: "destructive" }); return }
+  if (!name) { toast({ title: "Enter name", description: "Type a name to add", variant: "destructive", duration: 2000 }); return }
     const parts = name.split(/\s+/)
     const firstname = parts.slice(0, -1).join(" ") || parts[0]
     const lastname = parts.length > 1 ? parts[parts.length - 1] : ""
     try {
+      // quick-add has no DOB input; default age 0
       const created = await authApi.createPatient({ firstname, lastname, age: 0, gender: "Other", dob: new Date().toISOString().slice(0,10) } as any)
   setPatients(prev => [created, ...prev])
   setSelected(created)
   // clear query to hide list after selection
   setQuery("")
-      toast({ title: "Patient added", description: `${created.firstname} ${created.lastname} added.` })
+  toast({ title: "Patient added", description: `${created.firstname} ${created.lastname} added.`, duration: 2000 })
     } catch (e: any) {
-      toast({ title: "Failed", description: e?.message || "Could not add patient", variant: "destructive" })
+      toast({ title: "Failed", description: e?.message || "Could not add patient", variant: "destructive", duration: 2000 })
     }
   }
 
   const handleCreatePatientInline = async () => {
     const firstname = newFirstname.trim()
     const lastname = newLastname.trim()
-    if (!firstname) { toast({ title: "Missing", description: "Enter first name", variant: "destructive" }); return }
-    // validate/normalize DOB: user types mm-dd-yyyy in newDobDisplay; convert to ISO yyyy-MM-dd
+  if (!firstname) { toast({ title: "Missing", description: "Enter first name", variant: "destructive", duration: 2000 }); return }
+
+    // validate phone number length (number part only)
+    if (newPhone && newPhone.trim() !== "") {
+      const digits = newPhone.replace(/[^0-9]/g, "")
+        if (digits.length < 5 || digits.length > 11) {
+        toast({ title: "Invalid phone", description: "Phone number must be between 5 and 11 digits (excluding country code)", variant: "destructive", duration: 2000 })
+        return
+      }
+    }
+
+    // validate email if provided
+    if (newEmail && newEmail.trim() !== "") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+        toast({ title: "Invalid email", description: "Enter a valid email address", variant: "destructive", duration: 2000 })
+        return
+      }
+    }
+
+    // validate/normalize DOB and ensure year is 4 digits when provided
     let dobToSend: string | undefined = undefined
-    if (newDobIso && newDobIso.trim() !== "") {
-      // assume newDobIso is yyyy-MM-dd from native date input
+  if (newDobIso && newDobIso.trim() !== "") {
+      // require a 4-digit year somewhere in the input
+      const yearMatch = newDobIso.match(/(\d{4})/)
+      if (!yearMatch) {
+        toast({ title: "Invalid DOB", description: "Year must be 4 digits (yyyy)", variant: "destructive", duration: 2000 })
+        return
+      }
       try {
         const dt = parseISO(newDobIso)
         if (!isValid(dt)) { throw new Error('invalid') }
         dobToSend = format(dt, 'yyyy-MM-dd')
       } catch (e) {
-        toast({ title: "Invalid DOB", description: "Enter a valid date", variant: "destructive" })
+        toast({ title: "Invalid DOB", description: "Enter a valid date", variant: "destructive", duration: 2000 })
         return
       }
     } else {
       dobToSend = new Date().toISOString().slice(0,10)
     }
+
     if (creatingPatient) return
     setCreatingPatient(true)
     try {
-      const created = await authApi.createPatient({ firstname, lastname, age: 0, gender: newGender || "Other", dob: dobToSend } as any)
+      const fullPhone = newPhone ? `${newPhoneCountry}${newPhone}` : undefined
+      // compute age from dobToSend
+      let ageToSend = 0
+      try {
+        const dt = parseISO(dobToSend!)
+        if (isValid(dt)) {
+          ageToSend = Math.max(0, differenceInYears(new Date(), dt))
+        }
+      } catch (e) { /* ignore and keep age 0 */ }
+
+      const created = await authApi.createPatient({ firstname, lastname, age: ageToSend, gender: newGender || "Other", dob: dobToSend, phone: fullPhone || undefined, email: newEmail || undefined } as any)
 
       // Try to reload the full patients list from server so UI is authoritative
       try {
@@ -165,21 +236,23 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
       } catch (reloadErr: any) {
         // If reload fails, fall back to prepending the created patient locally
         setPatients(prev => [created, ...prev])
-        toast({ title: "Partial success", description: "Patient created but failed to reload list. Showing the new patient locally." })
+  toast({ title: "Partial success", description: "Patient created but failed to reload list. Showing the new patient locally.", duration: 2000 })
       }
 
       // hide inline form and clear query to hide list
-  setShowAddPatientForm(false)
-  // keep the patient search field empty and do not show the list by default
-  setQuery("")
+      setShowAddPatientForm(false)
+      setQuery("")
       setNewFirstname("")
       setNewLastname("")
-  setNewDobIso("")
+      setNewDobIso("")
       setNewGender("Other")
-  // intentionally don't populate the search field with the new patient's name
-      toast({ title: "Patient added", description: `${created.firstname} ${created.lastname} added.` })
+      setNewPhone("")
+      setNewEmail("")
+      setNewPhoneCountry("+91")
+
+  toast({ title: "Patient added", description: `${created.firstname} ${created.lastname} added.`, duration: 2000 })
     } catch (e: any) {
-      toast({ title: "Failed", description: e?.message || "Could not add patient", variant: "destructive" })
+  toast({ title: "Failed", description: e?.message || "Could not add patient", variant: "destructive", duration: 2000 })
     } finally {
       setCreatingPatient(false)
     }
@@ -188,7 +261,7 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
 const handleConfirm = () => {
   (async () => {
     if (!selected || !date || !location || !slotId) {
-      toast({ title: "Missing", description: "Select patient, date, location and slot", variant: "destructive" });
+      toast({ title: "Missing", description: "Select patient, date, location and slot", variant: "destructive", duration: 2000 });
       return;
     }
     if (booking) return;
@@ -210,8 +283,8 @@ const handleConfirm = () => {
           }
           if (found) {
             const status = (found.status ?? found.state ?? (found.current_patients >= (found.max_patients ?? found.capacity ?? 0) ? 'FULL' : 'AVAILABLE')) as string
-            if (String(status).toUpperCase() !== 'AVAILABLE') {
-              toast({ title: "Slot not available", description: "This slot is no longer available. Please choose another slot.", variant: "destructive" })
+              if (String(status).toUpperCase() !== 'AVAILABLE') {
+              toast({ title: "Slot not available", description: "This slot is no longer available. Please choose another slot.", variant: "destructive", duration: 2000 })
               setBooking(false)
               return
             }
@@ -225,8 +298,8 @@ const handleConfirm = () => {
       const buildPatient = (src: any) => {
         const firstname = (src?.firstname || newFirstname || "").trim();
         const lastname = (src?.lastname || newLastname || "").trim();
-        if (!firstname || !lastname) {
-          toast({ title: "Missing", description: "Patient must have a first and last name", variant: "destructive" });
+          if (!firstname || !lastname) {
+          toast({ title: "Missing", description: "Patient must have a first and last name", variant: "destructive", duration: 2000 });
           return null;
         }
         let dobRaw = src?.dob || newDobIso || new Date().toISOString().slice(0, 10);
@@ -236,7 +309,7 @@ const handleConfirm = () => {
           if (!isValid(dt)) throw new Error("invalid");
           dobIso = format(dt, "yyyy-MM-dd");
         } catch (err) {
-          toast({ title: "Invalid DOB", description: "Enter a valid date for patient DOB", variant: "destructive" });
+          toast({ title: "Invalid DOB", description: "Enter a valid date for patient DOB", variant: "destructive", duration: 2000 });
           return null;
         }
         const age = Math.max(0, differenceInYears(new Date(), parseISO(dobIso)));
@@ -264,7 +337,7 @@ const handleConfirm = () => {
       const userId = user.id || user._id;
       const res = await appointmentsApi.createForUser(userId, payload);
 
-  toast({ title: "Appointment confirmed", description: `Appointment booked successfully.`, duration: 3000 });
+  toast({ title: "Appointment confirmed", description: `Appointment booked successfully.`, duration: 2000 });
       try { if (typeof onBooked === "function") onBooked(); } catch (e) {}
       setOpen(false);
       setSelected(null);
@@ -273,7 +346,7 @@ const handleConfirm = () => {
       setSlotId(undefined);
       setSlotTime(undefined);
     } catch (e: any) {
-  toast({ title: "Booking failed", description: e?.message || "Could not book appointment", variant: "destructive", duration: 3000 });
+  toast({ title: "Booking failed", description: e?.message || "Could not book appointment", variant: "destructive", duration: 2000 });
     } finally {
       setBooking(false);
     }
@@ -319,15 +392,70 @@ const handleConfirm = () => {
                           <Input value={newFirstname} onChange={e => setNewFirstname(e.target.value)} />
                           <Label>Last name</Label>
                           <Input value={newLastname} onChange={e => setNewLastname(e.target.value)} />
+                          <Label>Phone</Label>
+                          <div className="flex items-center gap-2">
+                            <Select value={newPhoneCountry} onValueChange={(v: string) => setNewPhoneCountry(v)}>
+                              <SelectTrigger className="w-28">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allCountries.map((c:any) => (
+                                  <SelectItem key={c.callingCode} value={c.callingCode}>{c.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Input placeholder="Phone number" value={newPhone} onChange={e => {
+                              const cleaned = e.target.value.replace(/[^0-9]/g, '')
+                              setNewPhone(cleaned.slice(0, 11))
+                            }} />
+                          </div>
+                          <Label>Email</Label>
+                          <Input placeholder="name@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
                           <Label>DOB</Label>
                           <div className="relative">
                             <Input
-                              type="date"
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="yyyy-mm-dd"
                               value={newDobIso}
-                              className="pr-10 [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:w-8 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                              className="pr-10"
+                              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                // allow control keys and digits; block letters
+                                const allowed = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End']
+                                if (allowed.includes(e.key)) return
+                                // allow hyphen as well
+                                if (e.key === '-') return
+                                // allow digits
+                                if (/^[0-9]$/.test(e.key)) return
+                                e.preventDefault()
+                              }}
                               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                // HTML date input returns yyyy-MM-dd which matches API expectation
-                                setNewDobIso(e.target.value)
+                                // Accept only digits, build yyyy-mm-dd progressively
+                                const raw = (e.target.value || '').replace(/[^0-9]/g, '')
+                                const y = raw.slice(0,4)
+                                const m = raw.slice(4,6)
+                                const d = raw.slice(6,8)
+                                let out = y
+                                if (m.length) out += '-' + m
+                                if (d.length) out += '-' + d
+                                setNewDobIso(out)
+                              }}
+                              onBlur={() => {
+                                if (!newDobIso) return
+                                // require 4-digit year
+                                const match = newDobIso.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+                                if (!match) {
+                                  toast({ title: 'Invalid DOB', description: 'Enter date as yyyy-mm-dd', variant: 'destructive' })
+                                  return
+                                }
+                                try {
+                                  const dt = parseISO(newDobIso)
+                                  if (!isValid(dt)) throw new Error('invalid')
+                                  // normalize
+                                  setNewDobIso(format(dt, 'yyyy-MM-dd'))
+                                } catch (err) {
+                                  toast({ title: 'Invalid DOB', description: 'Enter a valid date', variant: 'destructive' })
+                                }
                               }}
                             />
                             <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
@@ -343,8 +471,9 @@ const handleConfirm = () => {
                               <SelectItem value="Other">Other</SelectItem>
                             </SelectContent>
                           </Select>
-                          <div className="flex justify-end">
-                            <Button onClick={handleCreatePatientInline} disabled={creatingPatient}>
+                          <div className="flex justify-end items-center">
+                            {!canCreate && <div className="text-xs text-gray-500 mr-2">Fill all fields correctly to create a new Patient</div>}
+                            <Button onClick={handleCreatePatientInline} disabled={creatingPatient || !canCreate}>
                               {creatingPatient ? 'Creating...' : 'Create'}
                             </Button>
                           </div>
@@ -381,7 +510,7 @@ const handleConfirm = () => {
 
               <div>
                 <Label>Location</Label>
-                <Input placeholder="Location" value={location || ""} onChange={e => setLocation(e.target.value)} />
+                <Input placeholder="Location" value={location || ""} readOnly />
               </div>
 
               <div className="pt-2">

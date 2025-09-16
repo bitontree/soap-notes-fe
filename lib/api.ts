@@ -618,7 +618,7 @@ export const soapApi = {
               onUploadProgress(percentCompleted);
             }
           },
-          timeout: 60000, // 60 seconds
+          timeout: 180000, // 60 seconds
         } as any
       );
 

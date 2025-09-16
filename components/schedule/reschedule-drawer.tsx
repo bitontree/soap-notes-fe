@@ -98,7 +98,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
     if (!selectedDate) return
       ; (async () => {
         setLoadingLocations(true)
-        try {
+          try {
           const list = await schedulesApi.list()
           if (cancelled) return
           const locSet = new Set<string>()
@@ -167,7 +167,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
     try {
       // require a specific slot selection (from candidateSlots)
       if (!selectedSlotId) {
-        toast({ title: 'Choose slot', description: 'Please select a specific slot/time', variant: 'destructive' })
+        toast({ title: 'Choose slot', description: 'Please select a specific slot/time', variant: 'destructive', duration: 2000 })
         return
       }
 
@@ -175,7 +175,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
       const userId = user.id || user._id
       const patientId = patient?.id || patient?._id || sourcePatientId
       if (!userId || !patientId) {
-        toast({ title: 'Missing user/patient', description: 'Login and patient info required', variant: 'destructive' })
+        toast({ title: 'Missing user/patient', description: 'Login and patient info required', variant: 'destructive', duration: 2000 })
         return
       }
       // Validate the selected slot by fetching the parent schedule's slots to get freshest state
@@ -189,7 +189,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
         const freshSlots = await schedulesApi.getSlotsForSchedule(String(scheduleId))
         const match = (freshSlots || []).map((s: any) => ({ id: String(s.id || s.slot_id), start: s.start_time, end: s.end_time, schedule_id: String(scheduleId), raw: s })).find((x: any) => x.id === selectedSlotId)
         if (!match) {
-          toast({ title: 'Slot unavailable', description: 'Selected slot is no longer available. Please pick another slot.', variant: 'destructive' })
+          toast({ title: 'Slot unavailable', description: 'Selected slot is no longer available. Please pick another slot.', variant: 'destructive', duration: 2000 })
           // refresh candidate slots list
           setCandidateSlots(prev => prev.filter(p => p.id !== selectedSlotId))
           return
@@ -200,7 +200,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
         const maxPatients = Number(raw.max_patients ?? raw.patients_per_slot ?? raw.capacity ?? 1)
         const current = Number(raw.current_patients ?? raw.filled_count ?? raw.booked_count ?? 0)
         if (current >= maxPatients) {
-          toast({ title: 'Slot full', description: 'Selected slot is already full. Choose another time.', variant: 'destructive' })
+          toast({ title: 'Slot full', description: 'Selected slot is already full. Choose another time.', variant: 'destructive', duration: 2000 })
           return
         }
       } catch (e) {
@@ -232,15 +232,15 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
         // include source appointment id in body as some backends expect it
         payload.appointment_id = String(appointmentIdToUse)
       } catch (e) {
-        toast({ title: 'Failed', description: 'Could not lookup appointment for reschedule', variant: 'destructive' })
+        toast({ title: 'Failed', description: 'Could not lookup appointment for reschedule', variant: 'destructive', duration: 2000 })
         setRescheduling(false)
         return
       }
       const candidate = candidateSlots.find(c => c.id === selectedSlotId)
       if (candidate && candidate.schedule_id) payload.schedule_id = String(candidate.schedule_id)
 
-      const res = await appointmentsApi.reschedule(appointmentIdToUse, payload)
-  toast({ title: 'Rescheduled', description: res?.message || 'Appointment rescheduled', duration: 3000 })
+        const res = await appointmentsApi.reschedule(appointmentIdToUse, payload)
+        toast({ title: 'Rescheduled', description: res?.message || 'Appointment rescheduled', duration: 2000 })
       // call parent refresh if provided
       try { if (typeof onDone === 'function') onDone() } catch (e) { }
       setOpen(false)
