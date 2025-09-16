@@ -286,6 +286,40 @@ export default function SchedulesPage() {
     }
   }
 
+  // Helper: optimistic merge of visible-range schedule_dates and slots into caches/state
+  async function optimisticMergeVisibleRangeData() {
+    if (!visibleFrom || !visibleTo) return
+    const [dates, rangeSlots] = await Promise.all([
+      schedulesApi.getScheduleDatesRange(visibleFrom, visibleTo),
+      schedulesApi.getSlotsRange(visibleFrom, visibleTo),
+    ])
+
+    const datesKey = `${visibleFrom}|${visibleTo}|month`
+    monthDatesCacheRef.current.set(datesKey, [ ...(monthDatesCacheRef.current.get(datesKey) || []), ...(dates || []) ])
+    // dedupe by id
+    const mergedDates = (monthDatesCacheRef.current.get(datesKey) || []).reduce((acc: any[], d: any) => {
+      if (!acc.find(x => x.id === d.id)) acc.push(d)
+      return acc
+    }, [])
+    monthDatesCacheRef.current.set(datesKey, mergedDates)
+    setScheduleDates(mergedDates)
+
+    const slotsKey = `${visibleFrom}|${visibleTo}|slots`
+    rangeSlotsCacheRef.current.set(slotsKey, [ ...(rangeSlotsCacheRef.current.get(slotsKey) || []), ...(rangeSlots || []) ])
+    const mergedSlots = (rangeSlotsCacheRef.current.get(slotsKey) || []).reduce((acc: any[], s: any) => {
+      if (!acc.find(x => String(x.id) === String(s.id))) acc.push(s)
+      return acc
+    }, [])
+    rangeSlotsCacheRef.current.set(slotsKey, mergedSlots)
+    setSlots(prev => {
+      // merge into existing slots state, preferring new ones
+      const map = new Map<string, any>()
+      mergedSlots.forEach((s: any) => map.set(String(s.id), normalizeSlot(s)))
+      prev.forEach((s: any) => { if (!map.has(String(s.id))) map.set(String(s.id), s) })
+      return Array.from(map.values())
+    })
+  }
+
   // Ensure we capture a fresh snapshot for confirm delete drawer whenever it opens
   useEffect(() => {
     let cancelled = false
@@ -397,6 +431,18 @@ export default function SchedulesPage() {
     }
   }, [confirmDeleteOpen])
 
+  // Auto-close the slot action menu after 3 seconds to avoid it persisting
+  useEffect(() => {
+    if (!slotMenuOpen) return undefined
+    const timer = setTimeout(() => {
+      setSlotMenuOpen(false)
+      setSlotMenuSlotId(null)
+      setSlotMenuPatientIndex(null)
+      setSlotMenuPatientId(null)
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [slotMenuOpen])
+
   // Normalize time to HH:mm (backend may return HH:MM:SS)
   function normalizeTime(t?: string) {
     if (!t) return "00:00"
@@ -474,6 +520,12 @@ export default function SchedulesPage() {
           ...prev.filter(s => s.schedule_id !== editingScheduleId),
           ...regenerated,
         ])
+      }
+      // Optimistically merge visible-range data so month view doesn't briefly lose events after update
+      try {
+        await optimisticMergeVisibleRangeData()
+      } catch (e) {
+        // ignore optimistic merge errors and fall back to full refresh
       }
       await refreshAll()
       setDrawerOpen(false)
@@ -898,14 +950,46 @@ export default function SchedulesPage() {
           })
         } else {
           // Handle normal slots - show individual patient positions
-          for (let i = 0; i < s.max_patients; i++) {
-            const isOccupied = i < s.current_patients
-            const status = isOccupied ? "OCCUPIED" : "AVAILABLE"
+          // Determine occupancy per patient position by checking whether
+          // there is an appointment present for that index. This is
+          // necessary when slots can have multiple patient positions
+          // and the simple s.current_patients count isn't sufficient to
+          // determine which exact indices are occupied.
 
-            const apptsForSlot = apptBySlot.get(String(s.id)) || []
+          const apptsForSlot = apptBySlot.get(String(s.id)) || []
+          const apptsAllForSlot = apptBySlotAll.get(String(s.id)) || []
+
+          const indicesAvailable: number[] = []
+          const indicesOccupied: number[] = []
+          const indicesCancelled: number[] = []
+          // Classify each patient position into one of three groups:
+          // - available (no appointment present)
+          // - occupied (appointment present and NOT cancelled)
+          // - cancelled (appointment present but cancelled)
+          for (let i = 0; i < (s.max_patients || 0); i++) {
             const apptForIndex = apptsForSlot[i] || null
-            const apptsAllForSlot = apptBySlotAll.get(String(s.id)) || []
             const apptAllForIndex = apptsAllForSlot[i] || null
+            const candidate = apptForIndex || apptAllForIndex || null
+            const isCancelled = !!(candidate && String((candidate.status || candidate.state || candidate.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
+            const isOccupied = !!candidate && !isCancelled
+            if (isOccupied) indicesOccupied.push(i)
+            else if (candidate && isCancelled) indicesCancelled.push(i)
+            else indicesAvailable.push(i)
+          }
+
+          // Render order: available first, occupied next, cancelled last.
+          // Putting cancelled indices last makes them top-most so clicks
+          // on a cancelled patient-slot will target the cancelled event
+          // (and open the add-appointment drawer) instead of falling
+          // through to an occupied overlay from another index.
+          const indices = [...indicesAvailable, ...indicesOccupied, ...indicesCancelled]
+          for (const i of indices) {
+            const apptForIndex = apptsForSlot[i] || null
+            const apptAllForIndex = apptsAllForSlot[i] || null
+            const candidate = apptForIndex || apptAllForIndex || null
+            const isCancelled = !!(candidate && String((candidate.status || candidate.state || candidate.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
+            const isOccupied = !!candidate && !isCancelled
+            const status = isOccupied ? "OCCUPIED" : "AVAILABLE"
 
             // Determine what to show
             let title = ""
@@ -1020,6 +1104,41 @@ export default function SchedulesPage() {
       // Force calendar refresh
       setSlots(prev => [...prev])
       // Ensure server state is in sync
+      // Optimistically merge visible-range data so month view doesn't briefly lose events
+      try {
+        if (visibleFrom && visibleTo) {
+          const [dates, rangeSlots] = await Promise.all([
+            schedulesApi.getScheduleDatesRange(visibleFrom, visibleTo),
+            schedulesApi.getSlotsRange(visibleFrom, visibleTo),
+          ])
+          const datesKey = `${visibleFrom}|${visibleTo}|month`
+          monthDatesCacheRef.current.set(datesKey, [ ...(monthDatesCacheRef.current.get(datesKey) || []), ...(dates || []) ])
+          // dedupe by id
+          const mergedDates = (monthDatesCacheRef.current.get(datesKey) || []).reduce((acc: any[], d: any) => {
+            if (!acc.find(x => x.id === d.id)) acc.push(d)
+            return acc
+          }, [])
+          monthDatesCacheRef.current.set(datesKey, mergedDates)
+          setScheduleDates(mergedDates)
+
+          const slotsKey = `${visibleFrom}|${visibleTo}|slots`
+          rangeSlotsCacheRef.current.set(slotsKey, [ ...(rangeSlotsCacheRef.current.get(slotsKey) || []), ...(rangeSlots || []) ])
+          const mergedSlots = (rangeSlotsCacheRef.current.get(slotsKey) || []).reduce((acc: any[], s: any) => {
+            if (!acc.find(x => String(x.id) === String(s.id))) acc.push(s)
+            return acc
+          }, [])
+          rangeSlotsCacheRef.current.set(slotsKey, mergedSlots)
+          setSlots(prev => {
+            // merge into existing slots state, preferring new ones
+            const map = new Map<string, any>()
+            mergedSlots.forEach((s: any) => map.set(String(s.id), normalizeSlot(s)))
+            prev.forEach((s: any) => { if (!map.has(String(s.id))) map.set(String(s.id), s) })
+            return Array.from(map.values())
+          })
+        }
+      } catch (e) {
+        // ignore optimistic merge errors and fall back to full refresh
+      }
       await refreshAll()
       setDrawerOpen(false)
       console.log("Schedule created; slots added:", slotsToAdd.length)
@@ -1085,10 +1204,6 @@ export default function SchedulesPage() {
             setDrawerOpen(true)
           }}>Add Schedule</Button>
         </div>
-      </div>
-      <div className="text-sm text-muted-foreground">
-        {/* {loadingAll ? "Loading schedules and slots..." : `Loaded ${schedules.length} schedules, ${slots.length} slots`} */}
-        {loadError && <span className="ml-2 text-red-600">{loadError}</span>}
       </div>
 
       <div className="rounded-md border">
@@ -1283,6 +1398,9 @@ export default function SchedulesPage() {
               // Non-month views: individual slot events
               const status = (props?.status || "").toString().toUpperCase()
               const isBlocked = !!props?.isBlocked
+              // Consider event cancelled flag: cancelled appointments should behave like AVAILABLE
+              // so clicking them opens the add-appointment drawer (to rebook), not the booked-slot menu.
+              const eventIsCancelled = !!props?.isCancelled
               const slotId = props?.slotId || props?.slot_id || props?.slot
               const slotTime = (props?.start_time as string) || (info?.event?.start ? (info.event.start as Date).toTimeString().slice(0,5) : "")
               const slotDate = (props?.date as string) || (info?.event?.start ? (info.event.start as Date).toISOString().slice(0,10) : "")
@@ -1294,8 +1412,9 @@ export default function SchedulesPage() {
                 return
               }
 
+              // If the event is marked cancelled, treat it as AVAILABLE (open drawer to rebook)
               // AVAILABLE -> open appointment drawer (pre-fill date/location/time but patient empty)
-              if (status === "AVAILABLE") {
+              if (status === "AVAILABLE" || eventIsCancelled) {
                 // Fill appointment-drawer initial props
                 setApptInitialDate(slotDate)
                 setApptInitialLocation(slotLocation)
@@ -1307,6 +1426,15 @@ export default function SchedulesPage() {
 
               // OCCUPIED/BOOKED -> open slot action menu (reschedule/delete)
               if (status === "OCCUPIED" || status === "BOOKED") {
+                // If this specific event was cancelled, prefer opening the add drawer instead
+                if (eventIsCancelled) {
+                  setApptInitialDate(slotDate)
+                  setApptInitialLocation(slotLocation)
+                  setApptInitialSlotId(slotId)
+                  setApptInitialSlotTime(slotTime)
+                  setApptDrawerOpen(true)
+                  return
+                }
                 // Position the menu near the click
                 const ev = info?.jsEvent || info?.domEvent
                 const x = ev?.clientX || 0
@@ -1589,7 +1717,7 @@ export default function SchedulesPage() {
                         onClick={handleDeleteScheduleClick}
                         disabled={deletingSchedule}
                       >
-                        {deletingSchedule ? "Deleting......" : "Delete"}
+                        {deletingSchedule ? "Deleting..." : "Delete"}
                       </Button>
                     )}
               <Button variant="outline" onClick={() => setDrawerOpen(false)}>Close</Button>
@@ -1601,7 +1729,7 @@ export default function SchedulesPage() {
                   {updatingSchedule ? "Updating...." : "Update Schedule"}
                 </Button>
               ) : (
-                <Button onClick={handleCreateSchedule} disabled={creating || !startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0}>{creating ? "Adding....." : "Add Schedule"}</Button>
+                <Button onClick={handleCreateSchedule} disabled={creating || !startDate || !endDate || !location || !recurringIntervalWeeks || recurringIntervalWeeks < 1 || recurringIntervalWeeks > 52 || daysOfWeek.length === 0}>{creating ? "Adding..." : "Add Schedule"}</Button>
               )}
             </div>
           </div>
@@ -1780,7 +1908,7 @@ export default function SchedulesPage() {
 
               <div className="pt-2">
                 <Button className="w-full" variant="destructive" onClick={handleConfirmDeleteAppointmentClick} disabled={deletingAppointment}>
-                  {deletingAppointment ? "Deleting......" : "Delete appointment"}
+                  {deletingAppointment ? "Deleting..." : "Delete appointment"}
                 </Button>
               </div>
             </div>
