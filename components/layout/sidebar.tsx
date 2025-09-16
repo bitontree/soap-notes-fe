@@ -15,12 +15,14 @@ import {
   Stethoscope,
   Upload,      
   Activity,
+  FormInput, 
 } from "lucide-react"
 
-// Add your new navigation item here:
+
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Generate SOAP", href: "/generate", icon: FileText },
+  { name: "Form Builder", href: "/form-builder", icon: FormInput },
   { name: "EHR Integration", href: "/ehr", icon: Database },
   { name: "Biomarkers", href: "/biomarkers", icon: Activity },
   { name: "Schedules", href: "/schedules", icon: History },

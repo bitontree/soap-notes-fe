@@ -1007,3 +1007,64 @@ export const appointmentsApi = {
     throw new ApiError(500, 'Failed to reschedule appointment')
   },
 };
+
+export async function saveFormToDatabase(formData: any): Promise<any> {
+  
+  const headers = {
+    "Content-Type": "application/json",
+    ...getAuthHeaders(),
+  };
+
+  try {
+    const response = await apiRequest<any>(`/api/forms/`, {
+      method: "POST",
+      data: formData,
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to save form");
+    }
+
+    return response.data;
+  } catch (error: any) {
+    console.error("API Error in saveFormToDatabase:", error);
+    throw error;
+  }
+}
+
+export async function fetchFormById(formId: string, token: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/api/forms/${formId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) throw new Error('Failed to fetch form');
+  return response.json();
+}
+
+export async function fetchLatestUserForm(): Promise<any | null> {
+  const headers = {
+    ...getAuthHeaders(),
+    ...getApiKeyAuthHeaders(),
+  };
+
+  try {
+    const response = await apiRequest<any>("/api/forms/?limit=1", {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to fetch latest user form");
+    }
+
+  
+    return response.data.length > 0 ? response.data[0] : null;
+  } catch (error) {
+    console.error("Error fetching latest user form:", error);
+    return null;
+  }
+}
+
+
