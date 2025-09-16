@@ -610,8 +610,8 @@ export default function SchedulesPage() {
         return
       }
       const status = (freshAppt.status || freshAppt.state || freshAppt.appointment_status || '').toString().toUpperCase()
-      if (status !== 'BOOKED') {
-        toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED appointments can be cancelled.`, variant: "destructive" })
+      if (!(status === 'BOOKED' || status === 'RESCHEDULED')) {
+        toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED or RESCHEDULED appointments can be cancelled.`, variant: "destructive" })
         await refreshSlotsAndSchedules()
         setConfirmDeleteOpen(false)
         setSlotMenuSlotId(null)
@@ -1206,7 +1206,7 @@ export default function SchedulesPage() {
                 })()
               }
             }}
-            eventClick={(info: any) => {
+            eventClick={async (info: any) => {
               const props = info?.event?.extendedProps || {}
               // Month view: existing behavior to open schedule-day editor
               if (currentView === "dayGridMonth") {
@@ -1237,17 +1237,38 @@ export default function SchedulesPage() {
               setEndTime(dayEnd)
               setLocation(dayLoc)
 
-              // Keep existing durations if available on schedule; otherwise don't overwrite
-              if (schedule?.slot_duration_minutes) setSlotDuration(schedule.slot_duration_minutes)
-              if (schedule?.patients_per_slot) setPatientsPerSlot(schedule.patients_per_slot)
+
+              // Try to fetch a representative slot for this schedule so we can prefill
+              // accurate duration and patients-per-slot values (slot may include slot_duration_minutes and max_patients)
+              let resolvedSlotDuration = schedule?.slot_duration_minutes ?? slotDuration
+              let resolvedPatientsPerSlot = schedule?.patients_per_slot ?? patientsPerSlot
+              try {
+                const rawSlots = await schedulesApi.getSlotsForSchedule(scheduleId)
+                const firstRaw = (rawSlots && rawSlots.length) ? rawSlots[0] : null
+                if (firstRaw) {
+                  // prefer explicit fields from the raw slot response (use any to allow multiple possible shapes)
+                  const rawAny = firstRaw as any
+                  const sd = rawAny.slot_duration_minutes ?? rawAny.duration_minutes ?? rawAny.slot_duration ?? undefined
+                  // map max_patients -> patients_per_slot; also accept other possible keys
+                  const mp = rawAny.max_patients ?? rawAny.patients_per_slot ?? rawAny.capacity ?? undefined
+                  if (sd !== undefined && sd !== null) resolvedSlotDuration = Number(sd)
+                  if (mp !== undefined && mp !== null) resolvedPatientsPerSlot = Number(mp)
+                }
+              } catch (e) {
+                // ignore slot fetch errors and fall back to schedule values
+              }
+
+              // Keep existing durations if available on schedule; otherwise use resolved values
+              setSlotDuration(resolvedSlotDuration)
+              setPatientsPerSlot(resolvedPatientsPerSlot)
 
               formReset({
                 start_date: schedule?.start_date || "",
                 end_date: schedule?.end_date || "",
                 start_time: dayStart || "",
                 end_time: dayEnd || "",
-                slot_duration_minutes: schedule?.slot_duration_minutes ?? slotDuration,
-                patients_per_slot: schedule?.patients_per_slot ?? patientsPerSlot,
+                slot_duration_minutes: resolvedSlotDuration,
+                patients_per_slot: resolvedPatientsPerSlot,
                 location: dayLoc || "",
                 days_of_week: schedule ? [...schedule.days_of_week] : [],
                 recurring_interval_weeks: schedule?.recurring_interval_weeks ?? recurringIntervalWeeks,
