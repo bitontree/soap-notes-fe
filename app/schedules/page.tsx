@@ -994,127 +994,112 @@ export default function SchedulesPage() {
           for (const i of indices) {
             const apptForIndex = apptsForSlot[i] || null
             const apptAllForIndex = apptsAllForSlot[i] || null
-            const candidate = apptForIndex || apptAllForIndex || null
-            const isCancelled = !!(candidate && String((candidate.status || candidate.state || candidate.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
-            const isOccupied = !!candidate && !isCancelled
-            const status = isOccupied ? "OCCUPIED" : "AVAILABLE"
 
-            // Determine what to show
-            let title = ""
-            let shouldShow = true
-
-            // Prefer appointment data from the full list (including cancelled) so we keep names visible
-            const candidateAppt = apptAllForIndex || apptForIndex || null
-
-            if (candidateAppt && (candidateAppt.firstname || candidateAppt.lastname || candidateAppt.patient)) {
-              const fn = candidateAppt.firstname || candidateAppt.patient?.firstname || ""
-              const ln = candidateAppt.lastname || candidateAppt.patient?.lastname || ""
-              const name = `${fn} ${ln}`.trim()
-              if (name) {
-                title = name
-                if (String((candidateAppt.status || candidateAppt.state || candidateAppt.appointment_status || '').toString().toUpperCase()).includes('CANCEL')) {
-                  // log when we're showing a cancelled appointment name on an available slot
-                  console.debug('[schedules] showing cancelled patient name for AVAILABLE slot', s.id, 'index', i, 'name', name)
-                }
-              }
+            // Find cancelled appointment for this specific index.
+            // For single-patient slots, pick the most-recent cancelled appointment from the slot's history
+            // (apptsAllForSlot) because apptAllForIndex may point to the oldest entry. For multi-patient
+            // slots, keep the per-index behaviour to avoid showing cancelled names from other indices.
+            let lastCancelled = null
+            const apptAllIsCancelled = (a: any) => !!(a && String((a.status || a.state || a.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
+            if ((s.max_patients || 0) <= 1) {
+              // single index: find the most recent cancelled in the full list
+              lastCancelled = (apptsAllForSlot || []).slice().reverse().find((a: any) => apptAllIsCancelled(a)) || null
             } else {
-              // No appointment name available: fall back to availability text or hide
-              if (status === "AVAILABLE") {
-                title = "AVL"
-              } else {
-                // OCCUPIED without name
-                shouldShow = false
-              }
+              // multi-index: only use the historical entry for this exact index
+              lastCancelled = (apptAllForIndex && apptAllIsCancelled(apptAllForIndex)) ? apptAllForIndex : null
             }
 
-            // Only add event if we should show it
-            if (shouldShow) {
-              const isCancelled = !!(apptAllForIndex && String((apptAllForIndex.status || apptAllForIndex.state || apptAllForIndex.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
-              if (isCancelled) console.debug('[schedules] slot', s.id, 'index', i, 'isCancelled true, apptId:', apptAllForIndex?._id || apptAllForIndex?.id)
-              // prefer name from the full list (apptAllForIndex) when available (so cancelled names display)
-              if (!title && apptAllForIndex) {
-                const fn = apptAllForIndex.firstname || apptAllForIndex.patient?.firstname || ""
-                const ln = apptAllForIndex.lastname || apptAllForIndex.patient?.lastname || ""
-                const name = `${fn} ${ln}`.trim()
-                if (name) title = name
-              }
+            // Determine current active appointment (prefer appointments list)
+            const active = apptForIndex || null
 
-              // If this index corresponds to a cancelled appointment, render two stacked events:
-              // 1) the cancelled appointment (muted gray, struck-through) rendered first (beneath)
-              // 2) an AVAILABLE overlay event (green "AVL") rendered after so it appears on top and is clickable
-              if (isCancelled) {
-                // cancelled (bottom) event
-                events.push({
-                  id: `${s.id}-${i}-cancelled`,
-                  title,
-                  start: `${s.date}T${st}:00`,
-                  end: `${s.date}T${et}:00`,
-                  classNames: ['appt-cancelled', 'appt-cancelled-bottom'],
-                  // muted gray colors
-                  backgroundColor: '#f3f4f6',
-                  borderColor: '#e5e7eb',
-                  textColor: '#374151',
-                  order: orderCounter++,
-                  extendedProps: {
-                    slotId: s.id,
-                    patientIndex: i,
-                    patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
-                    appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id || (apptAllForIndex?._id || apptAllForIndex?.id),
-                    isCancelled: true,
-                    status: 'CANCELLED',
-                    location: s.location,
-                    scheduleId: s.schedule_id
-                  }
-                })
+            // Current status: BOOKED if active present, otherwise AVAILABLE
+            const currentIsBooked = !!active
 
-                // available overlay (top) event
-                events.push({
-                  id: `${s.id}-${i}-overlay`,
-                  title: 'AVL',
-                  start: `${s.date}T${st}:00`,
-                  end: `${s.date}T${et}:00`,
-                  classNames: ['appt-available-overlay'],
-                  backgroundColor: '#dcfce7',
-                  borderColor: '#dcfce7',
-                  textColor: '#166534',
-                  order: orderCounter++,
-                  extendedProps: {
-                    slotId: s.id,
-                    patientIndex: i,
-                    patientId: undefined,
-                    appointmentId: undefined,
-                    isCancelled: false,
-                    isOverlayForCancelled: true,
-                    status: 'AVAILABLE',
-                    location: s.location,
-                    scheduleId: s.schedule_id
-                  }
-                })
-                console.debug('[schedules] pushed cancelled+overlay events', { slotId: s.id, index: i, title })
-              } else {
-                events.push({
-                  id: `${s.id}-${i}`,
-                  title,
-                  start: `${s.date}T${st}:00`,
-                  end: `${s.date}T${et}:00`,
-                  order: orderCounter++,
-                  classNames: undefined,
-                  backgroundColor: baseColors.backgroundColor,
-                  borderColor: baseColors.borderColor,
-                  textColor: baseColors.textColor,
-                  extendedProps: {
-                    slotId: s.id,
-                    patientIndex: i,
-                    patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
-                    appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id || (apptAllForIndex?._id || apptAllForIndex?.id),
-                    isCancelled: false,
-                    status,
-                    location: s.location,
-                    scheduleId: s.schedule_id
-                  }
-                })
-                console.debug('[schedules] pushed event', { slotId: s.id, index: i, title, isCancelled: false })
-              }
+            // 1) If lastCancelled exists, render cancelled (muted) bottom event
+            if (lastCancelled) {
+              const fn = lastCancelled.firstname || lastCancelled.patient?.firstname || ""
+              const ln = lastCancelled.lastname || lastCancelled.patient?.lastname || ""
+              const name = `${fn} ${ln}`.trim() || 'Cancelled'
+              events.push({
+                id: `${s.id}-${i}-cancelled`,
+                title: name,
+                start: `${s.date}T${st}:00`,
+                end: `${s.date}T${et}:00`,
+                classNames: ['appt-cancelled', 'appt-cancelled-bottom'],
+                backgroundColor: '#f3f4f6',
+                borderColor: '#e5e7eb',
+                textColor: '#374151',
+                order: orderCounter++,
+                extendedProps: {
+                  slotId: s.id,
+                  patientIndex: i,
+                  patientId: (lastCancelled.patient_id || lastCancelled.patient?.id) || undefined,
+                  appointmentId: lastCancelled._id || lastCancelled.id || undefined,
+                  isCancelled: true,
+                  status: 'CANCELLED',
+                  location: s.location,
+                  scheduleId: s.schedule_id
+                }
+              })
+            }
+
+            // 2) Render current state: booked name if active, otherwise AVL (or nothing if booked without name)
+            if (currentIsBooked) {
+              // use active appointment's name when available
+              const fn = active.firstname || active.patient?.firstname || ""
+              const ln = active.lastname || active.patient?.lastname || ""
+              const name = `${fn} ${ln}`.trim()
+              const display = name || 'Booked'
+              events.push({
+                id: `${s.id}-${i}`,
+                title: display,
+                start: `${s.date}T${st}:00`,
+                end: `${s.date}T${et}:00`,
+                order: orderCounter++,
+                // If there was a cancelled appointment beneath this patient index,
+                // render the BOOKED event as an overlay anchored to the right so it
+                // visually matches the AVAILABLE overlay used for cancelled rebook slots.
+                classNames: lastCancelled ? ['appt-available-overlay'] : undefined,
+                backgroundColor: baseColors.backgroundColor,
+                borderColor: baseColors.borderColor,
+                textColor: baseColors.textColor,
+                extendedProps: {
+                  slotId: s.id,
+                  patientIndex: i,
+                  patientId: (active.patient_id || active.patient?.id) || undefined,
+                  appointmentId: active._id || active.id || active.appointment_id || undefined,
+                  isCancelled: false,
+                  // mark as overlay for cancelled so eventDidMount can anchor/size it
+                  isOverlayForCancelled: !!lastCancelled,
+                  status: 'BOOKED',
+                  location: s.location,
+                  scheduleId: s.schedule_id
+                }
+              })
+            } else {
+              // available: show overlay
+              events.push({
+                id: `${s.id}-${i}-overlay`,
+                title: 'AVL',
+                start: `${s.date}T${st}:00`,
+                end: `${s.date}T${et}:00`,
+                classNames: ['appt-available-overlay'],
+                backgroundColor: '#dcfce7',
+                borderColor: '#dcfce7',
+                textColor: '#166534',
+                order: orderCounter++,
+                extendedProps: {
+                  slotId: s.id,
+                  patientIndex: i,
+                  patientId: undefined,
+                  appointmentId: undefined,
+                  isCancelled: false,
+                  isOverlayForCancelled: !!lastCancelled,
+                  status: 'AVAILABLE',
+                  location: s.location,
+                  scheduleId: s.schedule_id
+                }
+              })
             }
           }
         }
@@ -1339,14 +1324,25 @@ export default function SchedulesPage() {
                   el.classList.add('appt-available-overlay-for-cancelled')
                   // make sure overlay sits above cancelled bottom event
                   el.style.zIndex = '3'
-                  // shrink width and right-align within the slot cell
-                  el.style.justifyContent = 'flex-end'
-                  // ensure the event inner width is smaller so name on left remains visible
+
+                  // Anchor overlay to the right and let it expand leftwards so it
+                  // overlaps most of the cancelled pill (visually right->left).
+                  // Use inline styles (higher specificity) to avoid CSS percent rounding
+                  // issues from FullCalendar internals.
+                  el.style.position = 'absolute'
+                  el.style.top = '0'
+                  el.style.bottom = '0'
+                  el.style.right = '0'
+                  el.style.left = 'auto'
+                  el.style.width = '140%'
+                  el.style.boxSizing = 'border-box'
+
+                  // ensure the inner title fills the overlay and is aligned centered
                   const inner = el.querySelector('.fc-event-custom-title') as HTMLElement | null
                   if (inner) {
-                    inner.style.width = '60%'
-                    inner.style.textAlign = 'right'
-                    // keep pill-like appearance
+                    inner.style.width = '100%'
+                    inner.style.textAlign = 'center'
+                    inner.style.paddingLeft = '0.4rem'
                     inner.style.paddingRight = '0.4rem'
                   }
                 }
@@ -1636,9 +1632,11 @@ export default function SchedulesPage() {
 
           /* Special overlay variant when rendered above a cancelled event: shrink and right-align */
           .fc .appt-available-overlay-for-cancelled {
-            /* narrower than full width so cancelled name remains visible to the left */
-            width: 60% !important;
-            margin-left: 40% !important; /* push to the right */
+            /* overlay anchored to right: cover ~80% of the cancelled pill and extend leftwards */
+            position: absolute;
+            right: 0;
+            width: 140% !important;
+            margin-left: 0 !important;
             border-top-left-radius: 0.375rem !important;
             border-bottom-left-radius: 0.375rem !important;
           }
