@@ -1311,6 +1311,7 @@ export default function SchedulesPage() {
             eventDidMount={(arg: any) => {
               try {
                 const cancelled = !!arg.event.extendedProps?.isCancelled
+                const isOverlayForCancelled = !!arg.event.extendedProps?.isOverlayForCancelled
                 // Apply stronger styling directly to the event element as a fallback
                 const el = (arg.el as HTMLElement)
                 if (!el) return
@@ -1328,6 +1329,25 @@ export default function SchedulesPage() {
                     inner.style.color = '#374151'
                     inner.style.opacity = '0.95'
                     inner.style.fontWeight = '600'
+                  }
+                }
+                // If this event is an AVAILABLE overlay for a cancelled appointment,
+                // make it visually narrower and right-aligned so the cancelled name
+                // remains visible on the left (visual: "NA(----AVL----)").
+                if (isOverlayForCancelled) {
+                  // add helper class for css control
+                  el.classList.add('appt-available-overlay-for-cancelled')
+                  // make sure overlay sits above cancelled bottom event
+                  el.style.zIndex = '3'
+                  // shrink width and right-align within the slot cell
+                  el.style.justifyContent = 'flex-end'
+                  // ensure the event inner width is smaller so name on left remains visible
+                  const inner = el.querySelector('.fc-event-custom-title') as HTMLElement | null
+                  if (inner) {
+                    inner.style.width = '60%'
+                    inner.style.textAlign = 'right'
+                    // keep pill-like appearance
+                    inner.style.paddingRight = '0.4rem'
                   }
                 }
               } catch (e) {
@@ -1607,6 +1627,20 @@ export default function SchedulesPage() {
             border-color: #dcfce7 !important;
             color: #166534 !important;
             z-index: 2 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding-left: 0.25rem !important;
+            padding-right: 0.25rem !important;
+          }
+
+          /* Special overlay variant when rendered above a cancelled event: shrink and right-align */
+          .fc .appt-available-overlay-for-cancelled {
+            /* narrower than full width so cancelled name remains visible to the left */
+            width: 60% !important;
+            margin-left: 40% !important; /* push to the right */
+            border-top-left-radius: 0.375rem !important;
+            border-bottom-left-radius: 0.375rem !important;
           }
 
           /* Ensure event content uses our custom span for styling */
