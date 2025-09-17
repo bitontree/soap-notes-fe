@@ -25,18 +25,24 @@ type Props = {
   initialLocation?: string
   initialSlotId?: string
   initialSlotTime?: string
+  initialPatientIndex?: number
   onOpenChange?: (open: boolean) => void
   onBooked?: () => void
   side?: "left" | "right"
 }
 
-export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLocation, initialSlotId, initialSlotTime, onOpenChange, onBooked, side = "left" }: Props) {
+export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLocation, initialSlotId, initialSlotTime, initialPatientIndex, onOpenChange, onBooked, side = "left" }: Props) {
   const { toast } = useToast()
   const [internalOpen, setInternalOpen] = React.useState(false)
   const open = typeof controlledOpen === 'boolean' ? controlledOpen : internalOpen
+  // local partition index target when booking from composite slots
+  const [apptInitialPatientIndex, setApptInitialPatientIndex] = React.useState<number | undefined>(undefined)
+
   const setOpen = (v: boolean) => {
     if (typeof onOpenChange === 'function') onOpenChange(v)
     if (typeof controlledOpen !== 'boolean') setInternalOpen(v)
+    // clear any local initial patient index when closing
+    if (!v) setApptInitialPatientIndex(undefined)
   }
 
   const [query, setQuery] = React.useState("")
@@ -104,6 +110,8 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   setDate(initialDate ?? "")
   setLocation(initialLocation ?? "")
   setSlotId(initialSlotId)
+  // Accept an initial patient index (partition) so bookings target the right partition
+  setApptInitialPatientIndex(initialPatientIndex)
   setSlotTime(initialSlotTime)
   // Clear any previously entered patient search or selection so the drawer is fresh per-slot
   setSelected(null)
@@ -114,7 +122,7 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
     setTimeout(() => { try { searchRef.current?.focus() } catch (e) {} }, 50)
 
     return () => { cancelled = true }
-  }, [open, initialDate, initialLocation, initialSlotId, initialSlotTime, toast])
+  }, [open, initialDate, initialLocation, initialSlotId, initialSlotTime, initialPatientIndex, toast])
 
   // Debounced server search when query changes
   React.useEffect(() => {
@@ -330,6 +338,8 @@ const handleConfirm = () => {
         patient_id: selected?.id || undefined,
         // include patient object so backend can persist firstname/lastname (backend prefers patient_inline)
         patient: patientInline,
+        // target partition index for multi-patient slots (optional)
+        patient_index: typeof apptInitialPatientIndex === 'number' ? apptInitialPatientIndex : undefined,
         notes: undefined,
       };
 
@@ -340,6 +350,8 @@ const handleConfirm = () => {
   toast({ title: "Appointment confirmed", description: `Appointment booked successfully.`, duration: 2000 });
       try { if (typeof onBooked === "function") onBooked(); } catch (e) {}
       setOpen(false);
+   // clear local initial index on close
+   setApptInitialPatientIndex(undefined)
       setSelected(null);
       setDate("");
       setLocation("");

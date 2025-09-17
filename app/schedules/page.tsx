@@ -38,6 +38,7 @@ export default function SchedulesPage() {
   const [apptInitialLocation, setApptInitialLocation] = useState<string | undefined>(undefined)
   const [apptInitialSlotId, setApptInitialSlotId] = useState<string | undefined>(undefined)
   const [apptInitialSlotTime, setApptInitialSlotTime] = useState<string | undefined>(undefined)
+  const [apptInitialPatientIndex, setApptInitialPatientIndex] = useState<number | undefined>(undefined)
 
   const [operationScope, setOperationScope] = useState<"this_day" | "subsequent_days" | "later_days">("this_day")
   const [anchorDate, setAnchorDate] = useState<string>("")
@@ -171,6 +172,19 @@ export default function SchedulesPage() {
   const [dayModalOpen, setDayModalOpen] = useState(false)
   const [dayModalDate, setDayModalDate] = useState<string>("")
   const [dayModalItems, setDayModalItems] = useState<Array<{ scheduleId: string; location: string; start: string; end: string }>>([])
+
+  // Ensure the appointment drawer is never visible in month view. If the
+  // view switches to `dayGridMonth` (including on initial load), close the
+  // appointment drawer and clear any initial props so it does not persist.
+  useEffect(() => {
+    if (currentView === 'dayGridMonth') {
+      setApptDrawerOpen(false)
+      setApptInitialDate(undefined)
+      setApptInitialLocation(undefined)
+      setApptInitialSlotId(undefined)
+      setApptInitialSlotTime(undefined)
+    }
+  }, [currentView])
 
   // Normalize slot object from backend to local Slot shape expected by the calendar
   const normalizeSlot = (s: any): Slot => {
@@ -684,7 +698,32 @@ export default function SchedulesPage() {
       toast({ title: "Deleted", description: "Appointment cancelled successfully", duration: 2000 })
       setConfirmDeleteOpen(false)
       setSlotMenuSlotId(null)
-      setAppointments(prev => prev.filter(a => String(a.slot_id) !== String(slotMenuSlotId)))
+      // Remove only the canceled appointment from the active appointments list
+      setAppointments(prev => (prev || []).filter(a => String(a._id || a.id || a.appointment_id) !== String(apptId)))
+      // Immediately add the cancelled appointment to the allAppointments (historical) list
+      try {
+        const cancelledSnapshot = { ...(freshAppt || {}), status: 'CANCELLED' }
+        setAllAppointments(prev => {
+          const arr = (prev || []).slice()
+          const getId = (a: any) => String(a?._id || a?.id || a?.appointment_id || '')
+          const idx = arr.findIndex(a => getId(a) === String(apptId))
+          if (idx >= 0) {
+            arr[idx] = cancelledSnapshot
+          } else {
+            // If we don't find a matching appointment, append as fallback
+            arr.push(cancelledSnapshot)
+          }
+          return arr
+        })
+        // Force a quick slots state clone to trigger `events` recompute immediately
+        setSlots(prev => (prev || []).slice())
+        // DEBUG: dump appointment lists to help trace UI update issues (temporary)
+        try { console.debug('[DEBUG][cancel] appointments-after:', (appointments || []).map(a => ({ id: a._id||a.id||a.appointment_id, slot_id: a.slot_id, status: a.status }))) } catch(e){ }
+        try { console.debug('[DEBUG][cancel] allAppointments-after:', (allAppointments || []).map(a => ({ id: a._id||a.id||a.appointment_id, slot_id: a.slot_id, status: a.status }))) } catch(e){ }
+      } catch (e) {
+        // ignore non-critical UI update errors
+      }
+      // Refresh server state in background to ensure consistency
       await refreshSlotsAndSchedules()
     } catch (e: any) {
       toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive", duration: 2000 })
@@ -957,15 +996,39 @@ export default function SchedulesPage() {
             }
           })
         } else {
-          // Handle normal slots - show individual patient positions
+          // Handle normal slots
           // Determine occupancy per patient position by checking whether
           // there is an appointment present for that index. This is
           // necessary when slots can have multiple patient positions
           // and the simple s.current_patients count isn't sufficient to
           // determine which exact indices are occupied.
 
-          const apptsForSlot = apptBySlot.get(String(s.id)) || []
+          // Get active appointments (live) and all/historical appointments for this slot
+          const apptsForSlotRaw = apptBySlot.get(String(s.id)) || []
           const apptsAllForSlot = apptBySlotAll.get(String(s.id)) || []
+
+          // Build an active sequence: start with live appointments, but also merge
+          // any non-cancelled entries from the historical list that may not have
+          // propagated into the live `appointments` yet (handles race where add
+          // succeeded server-side but local `appointments` hasn't refreshed).
+          const isCancelledAppt = (a: any) => !!(a && String((a.status || a.state || a.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
+          const getApptId = (a: any) => String(a?._id || a?.id || a?.appointment_id || '')
+          const apptsForSlot: any[] = (apptsForSlotRaw || []).slice()
+          try {
+            for (const a of apptsAllForSlot) {
+              if (!isCancelledAppt(a) && !apptsForSlot.find(x => getApptId(x) === getApptId(a))) {
+                apptsForSlot.push(a)
+              }
+            }
+            // deterministic order by creation time
+            apptsForSlot.sort((x: any, y: any) => {
+              const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+              const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+              return tx - ty
+            })
+          } catch (e) {
+            // ignore merge errors
+          }
 
           const indicesAvailable: number[] = []
           const indicesOccupied: number[] = []
@@ -991,114 +1054,175 @@ export default function SchedulesPage() {
           // (and open the add-appointment drawer) instead of falling
           // through to an occupied overlay from another index.
           const indices = [...indicesAvailable, ...indicesOccupied, ...indicesCancelled]
-          for (const i of indices) {
-            const apptForIndex = apptsForSlot[i] || null
-            const apptAllForIndex = apptsAllForSlot[i] || null
-
-            // Find cancelled appointment for this specific index.
-            // For single-patient slots, pick the most-recent cancelled appointment from the slot's history
-            // (apptsAllForSlot) because apptAllForIndex may point to the oldest entry. For multi-patient
-            // slots, keep the per-index behaviour to avoid showing cancelled names from other indices.
-            let lastCancelled = null
+          // If slot supports multiple patients, create a single composite event
+          const maxPartitions = Math.max(1, Math.min(3, s.max_patients || 1))
+          if ((s.max_patients || 0) > 1) {
+            const boxes: any[] = []
             const apptAllIsCancelled = (a: any) => !!(a && String((a.status || a.state || a.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
-            if ((s.max_patients || 0) <= 1) {
-              // single index: find the most recent cancelled in the full list
-              lastCancelled = (apptsAllForSlot || []).slice().reverse().find((a: any) => apptAllIsCancelled(a)) || null
-            } else {
-              // multi-index: only use the historical entry for this exact index
-              lastCancelled = (apptAllForIndex && apptAllIsCancelled(apptAllForIndex)) ? apptAllForIndex : null
-            }
+            const getId = (a: any) => String(a?._id || a?.id || a?.appointment_id || '')
 
-            // Determine current active appointment (prefer appointments list)
-            const active = apptForIndex || null
+            for (let idx = 0; idx < maxPartitions; idx++) {
+              const apptForIndex = apptsForSlot[idx] || null
+              const apptAllForIndex = apptsAllForSlot[idx] || null
 
-            // Current status: BOOKED if active present, otherwise AVAILABLE
-            const currentIsBooked = !!active
+              // Prefer live active appointment for this exact index
+              let active = apptForIndex || null
+              // If no live active but historical has a non-cancelled entry for this index,
+              // treat it as active (handles race where appointments hasn't updated yet)
+              if (!active && apptAllForIndex && !apptAllIsCancelled(apptAllForIndex)) {
+                active = apptAllForIndex
+              }
 
-            // 1) If lastCancelled exists, render cancelled (muted) bottom event
-            if (lastCancelled) {
-              const fn = lastCancelled.firstname || lastCancelled.patient?.firstname || ""
-              const ln = lastCancelled.lastname || lastCancelled.patient?.lastname || ""
-              const name = `${fn} ${ln}`.trim() || 'Cancelled'
-              events.push({
-                id: `${s.id}-${i}-cancelled`,
-                title: name,
-                start: `${s.date}T${st}:00`,
-                end: `${s.date}T${et}:00`,
-                classNames: ['appt-cancelled', 'appt-cancelled-bottom'],
-                backgroundColor: '#f3f4f6',
-                borderColor: '#e5e7eb',
-                textColor: '#374151',
-                order: orderCounter++,
-                extendedProps: {
-                  slotId: s.id,
-                  patientIndex: i,
-                  patientId: (lastCancelled.patient_id || lastCancelled.patient?.id) || undefined,
-                  appointmentId: lastCancelled._id || lastCancelled.id || undefined,
-                  isCancelled: true,
-                  status: 'CANCELLED',
-                  location: s.location,
-                  scheduleId: s.schedule_id
-                }
-              })
-            }
+              const lastCancelled = (apptAllForIndex && apptAllIsCancelled(apptAllForIndex)) ? apptAllForIndex : null
 
-            // 2) Render current state: booked name if active, otherwise AVL (or nothing if booked without name)
-            if (currentIsBooked) {
-              // use active appointment's name when available
-              const fn = active.firstname || active.patient?.firstname || ""
-              const ln = active.lastname || active.patient?.lastname || ""
-              const name = `${fn} ${ln}`.trim()
-              const display = name || 'Booked'
-              events.push({
-                id: `${s.id}-${i}`,
-                title: display,
-                start: `${s.date}T${st}:00`,
-                end: `${s.date}T${et}:00`,
-                order: orderCounter++,
-                classNames: undefined,
-                backgroundColor: baseColors.backgroundColor,
-                borderColor: baseColors.borderColor,
-                textColor: baseColors.textColor,
-                extendedProps: {
-                  slotId: s.id,
-                  patientIndex: i,
-                  patientId: (active.patient_id || active.patient?.id) || undefined,
-                  appointmentId: active._id || active.id || active.appointment_id || undefined,
-                  isCancelled: false,
-                  // mark as overlay for cancelled so eventDidMount will anchor/size it like AVL overlays
-                  // NOTE: we do NOT add the 'appt-available-overlay' class here so the booked
-                  // background (pink/red) remains. The flag only drives positioning/size.
-                  isOverlayForCancelled: !!lastCancelled,
+              if (active) {
+                const fn = active.firstname || active.patient?.firstname || ''
+                const ln = active.lastname || active.patient?.lastname || ''
+                boxes.push({
+                  patientIndex: idx,
+                  title: `${fn} ${ln}`.trim() || 'Booked',
                   status: 'BOOKED',
-                  location: s.location,
-                  scheduleId: s.schedule_id
-                }
-              })
-            } else {
-              // available: show overlay
-              events.push({
-                id: `${s.id}-${i}-overlay`,
-                title: 'AVL',
-                start: `${s.date}T${st}:00`,
-                end: `${s.date}T${et}:00`,
-                classNames: ['appt-available-overlay'],
-                backgroundColor: '#dcfce7',
-                borderColor: '#dcfce7',
-                textColor: '#166534',
-                order: orderCounter++,
-                extendedProps: {
-                  slotId: s.id,
-                  patientIndex: i,
-                  patientId: undefined,
-                  appointmentId: undefined,
                   isCancelled: false,
-                  isOverlayForCancelled: !!lastCancelled,
+                  appointmentId: getId(active) || undefined,
+                })
+              } else if (lastCancelled) {
+                // Show cancelled name on left and AVAILABLE overlay on right
+                const fn = lastCancelled.firstname || lastCancelled.patient?.firstname || ''
+                const ln = lastCancelled.lastname || lastCancelled.patient?.lastname || ''
+                boxes.push({
+                  patientIndex: idx,
+                  title: `${fn} ${ln}`.trim() || 'Cancelled',
                   status: 'AVAILABLE',
-                  location: s.location,
-                  scheduleId: s.schedule_id
-                }
-              })
+                  isCancelled: true,
+                  appointmentId: getId(lastCancelled) || undefined,
+                })
+              } else {
+                // Empty partition: AVAILABLE
+                boxes.push({
+                  patientIndex: idx,
+                  title: 'AVL',
+                  status: 'AVAILABLE',
+                  isCancelled: false,
+                  appointmentId: undefined,
+                })
+              }
+            }
+            // create single composite event
+            events.push({
+              id: `${s.id}-composite`,
+              title: '',
+              start: `${s.date}T${st}:00`,
+              end: `${s.date}T${et}:00`,
+              order: orderCounter++,
+              backgroundColor: baseColors.backgroundColor,
+              borderColor: baseColors.borderColor,
+              textColor: baseColors.textColor,
+              extendedProps: {
+                composite: true,
+                boxes,
+                slotId: s.id,
+                slot_id: s.id,
+                scheduleId: s.schedule_id,
+                location: s.location,
+              }
+            })
+          } else {
+            // single-patient slots: retain original per-index behavior
+            for (const i of indices) {
+              const apptForIndex = apptsForSlot[i] || null
+              const apptAllForIndex = apptsAllForSlot[i] || null
+
+              // Find cancelled appointment for this specific index.
+              // For single-patient slots, pick the most-recent cancelled in the full list
+              let lastCancelled = null
+              const apptAllIsCancelled = (a: any) => !!(a && String((a.status || a.state || a.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
+              if ((s.max_patients || 0) <= 1) {
+                lastCancelled = (apptsAllForSlot || []).slice().reverse().find((a: any) => apptAllIsCancelled(a)) || null
+              } else {
+                lastCancelled = (apptAllForIndex && apptAllIsCancelled(apptAllForIndex)) ? apptAllForIndex : null
+              }
+
+              const active = apptForIndex || null
+              const currentIsBooked = !!active
+
+              if (lastCancelled) {
+                const fn = lastCancelled.firstname || lastCancelled.patient?.firstname || ""
+                const ln = lastCancelled.lastname || lastCancelled.patient?.lastname || ""
+                const name = `${fn} ${ln}`.trim() || 'Cancelled'
+                events.push({
+                  id: `${s.id}-${i}-cancelled`,
+                  title: name,
+                  start: `${s.date}T${st}:00`,
+                  end: `${s.date}T${et}:00`,
+                  classNames: ['appt-cancelled', 'appt-cancelled-bottom'],
+                  backgroundColor: '#f3f4f6',
+                  borderColor: '#e5e7eb',
+                  textColor: '#374151',
+                  order: orderCounter++,
+                  extendedProps: {
+                    slotId: s.id,
+                    patientIndex: i,
+                    patientId: (lastCancelled.patient_id || lastCancelled.patient?.id) || undefined,
+                    appointmentId: lastCancelled._id || lastCancelled.id || undefined,
+                    isCancelled: true,
+                    status: 'CANCELLED',
+                    location: s.location,
+                    scheduleId: s.schedule_id
+                  }
+                })
+              }
+
+              if (currentIsBooked) {
+                const fn = active.firstname || active.patient?.firstname || ""
+                const ln = active.lastname || active.patient?.lastname || ""
+                const name = `${fn} ${ln}`.trim()
+                const display = name || 'Booked'
+                events.push({
+                  id: `${s.id}-${i}`,
+                  title: display,
+                  start: `${s.date}T${st}:00`,
+                  end: `${s.date}T${et}:00`,
+                  order: orderCounter++,
+                  classNames: undefined,
+                  backgroundColor: baseColors.backgroundColor,
+                  borderColor: baseColors.borderColor,
+                  textColor: baseColors.textColor,
+                  extendedProps: {
+                    slotId: s.id,
+                    patientIndex: i,
+                    patientId: (active.patient_id || active.patient?.id) || undefined,
+                    appointmentId: active._id || active.id || active.appointment_id || undefined,
+                    isCancelled: false,
+                    isOverlayForCancelled: !!lastCancelled,
+                    status: 'BOOKED',
+                    location: s.location,
+                    scheduleId: s.schedule_id
+                  }
+                })
+              } else {
+                events.push({
+                  id: `${s.id}-${i}-overlay`,
+                  title: 'AVL',
+                  start: `${s.date}T${st}:00`,
+                  end: `${s.date}T${et}:00`,
+                  classNames: ['appt-available-overlay'],
+                  backgroundColor: '#dcfce7',
+                  borderColor: '#dcfce7',
+                  textColor: '#166534',
+                  order: orderCounter++,
+                  extendedProps: {
+                    slotId: s.id,
+                    patientIndex: i,
+                    patientId: undefined,
+                    appointmentId: undefined,
+                    isCancelled: false,
+                    isOverlayForCancelled: !!lastCancelled,
+                    status: 'AVAILABLE',
+                    location: s.location,
+                    scheduleId: s.schedule_id
+                  }
+                })
+              }
             }
           }
         }
@@ -1231,8 +1355,9 @@ export default function SchedulesPage() {
               initialLocation={apptInitialLocation}
               initialSlotId={apptInitialSlotId}
               initialSlotTime={apptInitialSlotTime}
+              initialPatientIndex={apptInitialPatientIndex}
               side={currentView === "dayGridMonth" ? "left" : "right"}
-              onOpenChange={(v) => { if (!v) { setApptInitialDate(undefined); setApptInitialLocation(undefined); setApptInitialSlotId(undefined); setApptInitialSlotTime(undefined) } setApptDrawerOpen(v) }}
+              onOpenChange={(v) => { if (!v) { setApptInitialDate(undefined); setApptInitialLocation(undefined); setApptInitialSlotId(undefined); setApptInitialSlotTime(undefined); setApptInitialPatientIndex(undefined) } setApptDrawerOpen(v) }}
               onBooked={() => { refreshSlotsAndSchedules() }}
             />
           )}
@@ -1263,92 +1388,174 @@ export default function SchedulesPage() {
             height="auto"
             slotMinTime="07:00:00"
             scrollTime="07:00:00"
-            events={events}
+              events={events}
               eventOrder="order"
-            eventContent={(arg: any) => {
-              try {
-                const isCancelled = !!arg.event.extendedProps?.isCancelled
-                const title = arg.event.title || ''
-                const baseStyle: any = {
-                  display: 'block',
-                  width: '100%',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }
-                if (isCancelled) {
+              eventContent={(arg: any) => {
+                try {
+                  const ep = arg.event.extendedProps || {}
+                  // Composite event (multi-patient slot) rendering
+                  if (ep && ep.composite && Array.isArray(ep.boxes)) {
+                    const boxes = ep.boxes as any[]
+                    const containerStyle: any = { display: 'flex', width: '100%', height: '100%', alignItems: 'stretch' }
+                    return (
+                      <div className="fc-event-composite" style={containerStyle}>
+                        {boxes.map((b, idx) => {
+                          const status = (b.status || '').toString().toUpperCase()
+                          const isCancelled = !!b.isCancelled
+                          const boxClass = `composite-box ${status === 'BOOKED' ? 'box-booked' : (status === 'AVAILABLE' ? 'box-available' : '')} ${isCancelled ? 'box-cancelled' : ''}`
+                          const style: any = {
+                            flex: `1 1 ${100 / Math.max(1, boxes.length)}%`,
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'stretch',
+                            padding: '0',
+                            boxSizing: 'border-box',
+                            overflow: 'hidden',
+                            position: 'relative',
+                            borderLeft: idx === 0 ? 'none' : '1px solid rgba(0,0,0,0.06)'
+                          }
+                          // left cancelled name (if any) and right overlay
+                          const cancelledName = isCancelled ? (b.title || 'Cancelled') : null
+                          const overlayStatus = status === 'BOOKED' ? 'BOOKED' : (status === 'AVAILABLE' ? 'AVAILABLE' : status)
+
+                          // left area width when cancelled name exists (reserve ~20%)
+                          const leftStyle: any = cancelledName ? { flex: '0 0 20%', display: 'flex', alignItems: 'center', padding: '0 6px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: '#f3f4f6' } : { display: 'none' }
+
+                          // right overlay fills remaining space; if no cancelled name, it uses full width
+                          const rightStyle: any = {
+                            flex: '1 1 0%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '0 6px',
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                            textOverflow: 'ellipsis',
+                            boxSizing: 'border-box',
+                            borderLeft: cancelledName ? '1px solid rgba(0,0,0,0.02)' : 'none'
+                          }
+                          const overlayBg = overlayStatus === 'BOOKED' ? ep.backgroundColor || '#fee2e2' : '#dcfce7'
+                          rightStyle.background = overlayBg
+
+                          // When cancelled name exists and overlay is AVAILABLE, visually shrink overlay to ~80% by constraining left area
+                          // (left reserved 20% + right fills remaining ~80%) — using flex ensures no overlap.
+
+                          return (
+                            <div key={String(idx)} className={boxClass} style={style}>
+                              {cancelledName ? (
+                                <div style={leftStyle} aria-hidden>
+                                  <span style={{ textDecoration: 'line-through', color: '#374151', opacity: 0.95, fontWeight: 600, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cancelledName}</span>
+                                </div>
+                              ) : null}
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                data-slot-id={String(ep.slotId || ep.slot_id || '')}
+                                data-patient-index={String(b.patientIndex ?? idx)}
+                                data-status={overlayStatus}
+                                data-appointment-id={String(b.appointmentId || '')}
+                                className="composite-box-overlay"
+                                style={rightStyle}
+                              >
+                                <span style={{ display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: overlayStatus === 'BOOKED' ? 600 : 500 }}>{overlayStatus === 'BOOKED' ? (b.title || 'Booked') : (overlayStatus === 'AVAILABLE' ? 'AVL' : b.title)}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  }
+
+                  // Fallback: single-event rendering (existing behavior)
+                  const isCancelled = !!ep?.isCancelled
+                  const title = arg.event.title || ''
+                  const baseStyle: any = {
+                    display: 'block',
+                    width: '100%',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }
+                  if (isCancelled) {
+                    return (
+                      <div className="fc-event-custom-title" style={baseStyle}>
+                        <span style={{ textDecoration: 'line-through', color: '#4b5563', opacity: 0.95, fontWeight: 600 }}>{title}</span>
+                      </div>
+                    )
+                  }
                   return (
                     <div className="fc-event-custom-title" style={baseStyle}>
-                      <span style={{ textDecoration: 'line-through', color: '#4b5563', opacity: 0.95, fontWeight: 600 }}>{title}</span>
+                      <span style={{ color: undefined }}>{title}</span>
                     </div>
                   )
+                } catch (e) {
+                  return null
                 }
-                return (
-                  <div className="fc-event-custom-title" style={baseStyle}>
-                    <span style={{ color: undefined }}>{title}</span>
-                  </div>
-                )
-              } catch (e) {
-                return null
-              }
-            }}
-            eventDidMount={(arg: any) => {
-              try {
-                const cancelled = !!arg.event.extendedProps?.isCancelled
-                const isOverlayForCancelled = !!arg.event.extendedProps?.isOverlayForCancelled
-                // Apply stronger styling directly to the event element as a fallback
-                const el = (arg.el as HTMLElement)
-                if (!el) return
-                if (cancelled) {
-                  // set background/border to muted gray and enforce text color/strike
-                  el.style.backgroundColor = '#f3f4f6'
-                  el.style.borderColor = '#e5e7eb'
-                  el.style.opacity = '1'
-                  // ensure css target class present
-                  el.classList.add('appt-cancelled')
-                  // try to find inner title span and set styles
-                  const inner = el.querySelector('.fc-event-custom-title span') as HTMLElement | null
-                  if (inner) {
-                    inner.style.textDecoration = 'line-through'
-                    inner.style.color = '#374151'
-                    inner.style.opacity = '0.95'
-                    inner.style.fontWeight = '600'
+              }}
+              eventDidMount={(arg: any) => {
+                try {
+                  const ep = arg.event.extendedProps || {}
+                  const cancelled = !!ep?.isCancelled
+                  const isOverlayForCancelled = !!ep?.isOverlayForCancelled
+                  const isComposite = !!ep?.composite
+                  // Apply stronger styling directly to the event element as a fallback
+                  const el = (arg.el as HTMLElement)
+                  if (!el) return
+                  if (cancelled && !isComposite) {
+                    // set background/border to muted gray and enforce text color/strike
+                    el.style.backgroundColor = '#f3f4f6'
+                    el.style.borderColor = '#e5e7eb'
+                    el.style.opacity = '1'
+                    // ensure css target class present
+                    el.classList.add('appt-cancelled')
+                    // try to find inner title span and set styles
+                    const inner = el.querySelector('.fc-event-custom-title span') as HTMLElement | null
+                    if (inner) {
+                      inner.style.textDecoration = 'line-through'
+                      inner.style.color = '#374151'
+                      inner.style.opacity = '0.95'
+                      inner.style.fontWeight = '600'
+                    }
                   }
-                }
-                // If this event is an AVAILABLE overlay for a cancelled appointment,
-                // make it visually narrower and right-aligned so the cancelled name
-                // remains visible on the left (visual: "NA(----AVL----)").
-                if (isOverlayForCancelled) {
-                  // add helper class for css control
-                  el.classList.add('appt-available-overlay-for-cancelled')
-                  // make sure overlay sits above cancelled bottom event
-                  el.style.zIndex = '3'
+                  // If this event is an AVAILABLE overlay for a cancelled appointment and
+                  // it's NOT a composite (single-patient) event, make it narrower and right-aligned.
+                  if (isOverlayForCancelled && !isComposite) {
+                    // add helper class for css control
+                    el.classList.add('appt-available-overlay-for-cancelled')
+                    // make sure overlay sits above cancelled bottom event
+                    el.style.zIndex = '3'
 
-                  // Anchor overlay to the right and let it expand leftwards so it
-                  // overlaps most of the cancelled pill (visually right->left).
-                  // Use inline styles (higher specificity) to avoid CSS percent rounding
-                  // issues from FullCalendar internals.
-                  el.style.position = 'absolute'
-                  el.style.top = '0'
-                  el.style.bottom = '0'
-                  el.style.right = '0'
-                  el.style.left = 'auto'
-                  el.style.width = '140%'
-                  el.style.boxSizing = 'border-box'
+                    // Anchor overlay to the right and let it expand leftwards so it
+                    // overlaps most of the cancelled pill (visually right->left).
+                    el.style.position = 'absolute'
+                    el.style.top = '0'
+                    el.style.bottom = '0'
+                    el.style.right = '0'
+                    el.style.left = 'auto'
+                    el.style.width = '140%'
+                    el.style.boxSizing = 'border-box'
 
-                  // ensure the inner title fills the overlay and is aligned centered
-                  const inner = el.querySelector('.fc-event-custom-title') as HTMLElement | null
-                  if (inner) {
-                    inner.style.width = '100%'
-                    inner.style.textAlign = 'center'
-                    inner.style.paddingLeft = '0.4rem'
-                    inner.style.paddingRight = '0.4rem'
+                    // ensure the inner title fills the overlay and is aligned centered
+                    const inner = el.querySelector('.fc-event-custom-title') as HTMLElement | null
+                    if (inner) {
+                      inner.style.width = '100%'
+                      inner.style.textAlign = 'center'
+                      inner.style.paddingLeft = '0.4rem'
+                      inner.style.paddingRight = '0.4rem'
+                    }
                   }
+                  // For composite events, ensure overlay children are clickable and sit above cancelled name
+                  if (isComposite) {
+                    const overlays = el.querySelectorAll('.composite-box-overlay') as NodeListOf<HTMLElement>
+                    overlays.forEach(o => {
+                      o.style.zIndex = '3'
+                      o.style.pointerEvents = 'auto'
+                    })
+                  }
+                } catch (e) {
+                  // ignore
                 }
-              } catch (e) {
-                // ignore
-              }
-            }}
+              }}
             eventDisplay="block"
             datesSet={(arg: any) => {
               const viewType = arg?.view?.type
@@ -1475,16 +1682,68 @@ export default function SchedulesPage() {
                 return
               }
 
-              // Non-month views: individual slot events
+              // Non-month views: individual slot events or composite events
+              const slotTime = (props?.start_time as string) || (info?.event?.start ? (info.event.start as Date).toTimeString().slice(0,5) : "")
+              const slotDate = (props?.date as string) || (info?.event?.start ? (info.event.start as Date).toISOString().slice(0,10) : "")
+              const slotLocation = props?.location || ""
+
+              // If this is a composite event, inspect clicked DOM to find which box was clicked
+              const composite = !!props?.composite
+              if (composite) {
+                const jsEv = info?.jsEvent || info?.domEvent
+                const target = jsEv?.target || jsEv?.srcElement || null
+                // Walk up to find element with data-status
+                let node: any = target
+                let found = null
+                while (node) {
+                  if (node.dataset && node.dataset.status) { found = node; break }
+                  node = node.parentElement
+                }
+                if (!found) {
+                  // fallback: treat whole composite as unavailable
+                  return
+                }
+                const status = (found.dataset.status || '').toString().toUpperCase()
+                const slotId = found.dataset.slotId || props?.slotId || props?.slot_id || props?.slot
+                const patientIndex = typeof found.dataset.patientIndex !== 'undefined' ? Number(found.dataset.patientIndex) : null
+                const patientId = found.dataset.appointmentId || null
+
+                // Blocked check (composite shouldn't be blocked but keep guard)
+                if (status === 'BLOCKED') { toast({ title: 'Blocked', description: 'This slot is blocked and cannot be modified.', variant: 'destructive' }); return }
+
+                // AVAILABLE or CANCELLED => open appointment drawer
+                if (status === 'AVAILABLE' || status === 'CANCELLED') {
+                  setApptInitialDate(slotDate)
+                  setApptInitialLocation(slotLocation)
+                  setApptInitialSlotId(slotId)
+                  setApptInitialPatientIndex(typeof patientIndex === 'number' ? patientIndex : undefined)
+                  setApptInitialSlotTime(slotTime)
+                  if (currentView !== 'dayGridMonth') setApptDrawerOpen(true)
+                  return
+                }
+
+                // BOOKED => open slot action menu
+                if (status === 'BOOKED' || status === 'OCCUPIED') {
+                  const ev = info?.jsEvent || info?.domEvent
+                  const x = ev?.clientX || 0
+                  const y = ev?.clientY || 0
+                  setSlotMenuPos({ x, y })
+                  setSlotMenuSlotId(slotId ? String(slotId) : null)
+                  setSlotMenuPatientIndex(typeof patientIndex === 'number' ? patientIndex : null)
+                  setSlotMenuPatientId(patientId)
+                  setSlotMenuOpen(true)
+                  return
+                }
+                return
+              }
+
+              // Non-composite (single-patient) behavior (preserve existing logic)
               const status = (props?.status || "").toString().toUpperCase()
               const isBlocked = !!props?.isBlocked
               // Consider event cancelled flag: cancelled appointments should behave like AVAILABLE
               // so clicking them opens the add-appointment drawer (to rebook), not the booked-slot menu.
               const eventIsCancelled = !!props?.isCancelled
               const slotId = props?.slotId || props?.slot_id || props?.slot
-              const slotTime = (props?.start_time as string) || (info?.event?.start ? (info.event.start as Date).toTimeString().slice(0,5) : "")
-              const slotDate = (props?.date as string) || (info?.event?.start ? (info.event.start as Date).toISOString().slice(0,10) : "")
-              const slotLocation = props?.location || ""
 
               // If slot is blocked, show a simple toast and do nothing
               if (isBlocked || status === "BLOCKED") {
@@ -1499,8 +1758,9 @@ export default function SchedulesPage() {
                 setApptInitialDate(slotDate)
                 setApptInitialLocation(slotLocation)
                 setApptInitialSlotId(slotId)
+                setApptInitialPatientIndex(typeof props?.patientIndex === 'number' ? props.patientIndex : undefined)
                 setApptInitialSlotTime(slotTime)
-                setApptDrawerOpen(true)
+                if (currentView !== 'dayGridMonth') setApptDrawerOpen(true)
                 return
               }
 
@@ -1512,7 +1772,7 @@ export default function SchedulesPage() {
                   setApptInitialLocation(slotLocation)
                   setApptInitialSlotId(slotId)
                   setApptInitialSlotTime(slotTime)
-                  setApptDrawerOpen(true)
+                  if (currentView !== 'dayGridMonth') setApptDrawerOpen(true)
                   return
                 }
                 // Position the menu near the click
@@ -1593,6 +1853,33 @@ export default function SchedulesPage() {
         
         .fc-event {
           cursor: pointer;
+        }
+        /* Composite multi-patient slot boxes */
+        .fc .fc-event-composite {
+          display: flex !important;
+          width: 100% !important;
+          height: 100% !important;
+        }
+        .fc .fc-event-composite .composite-box {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: flex-start !important;
+          padding: 0 !important;
+          box-sizing: border-box !important;
+          overflow: hidden !important;
+          position: relative !important;
+          font-size: 0.875rem !important;
+        }
+        .fc .fc-event-composite .composite-box:last-child { border-right: none !important }
+        .fc .fc-event-composite .composite-box > div[aria-hidden] { padding-left: 0.25rem !important; padding-right: 0.25rem !important }
+        .fc .fc-event-composite .composite-box { border-right: 0 !important }
+        .fc .fc-event-composite .composite-box-overlay {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          height: 100% !important;
+          cursor: pointer !important;
+          color: inherit !important;
         }
         `}</style>
         <style jsx global>{`
