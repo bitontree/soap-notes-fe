@@ -847,6 +847,12 @@ export default function SchedulesPage() {
   // Map slots/schedule_dates to FullCalendar events
   const events = useMemo(() => {
   const events: any[] = []
+  // preserve insertion order for FullCalendar by attaching a numeric `order`
+  // property to each event and instructing FullCalendar to use it via
+  // the `eventOrder` option. This prevents FullCalendar from falling back
+  // to alphabetical ordering by title when multiple events share the same
+  // start/end times (common for stacked slot events).
+  let orderCounter = 0
 
     if (currentView === "dayGridMonth") {
       // Month view: show one event per schedule_date
@@ -858,6 +864,7 @@ export default function SchedulesPage() {
           title: `${d.location} ${st}-${et}`,
           start: `${d.date}T${st}:00`,
           end: `${d.date}T${et}:00`,
+          order: orderCounter++,
           backgroundColor: "#dcfce7",
           borderColor: "#dcfce7",
           textColor: "#166534",
@@ -934,6 +941,7 @@ export default function SchedulesPage() {
             title: "BLOCKED",
             start: `${s.date}T${st}:00`,
             end: `${s.date}T${et}:00`,
+            order: orderCounter++,
             backgroundColor: baseColors.backgroundColor,
             borderColor: baseColors.borderColor,
             textColor: baseColors.textColor,
@@ -1030,27 +1038,83 @@ export default function SchedulesPage() {
                 const name = `${fn} ${ln}`.trim()
                 if (name) title = name
               }
-              events.push({
-                id: `${s.id}-${i}`,
-                title,
-                start: `${s.date}T${st}:00`,
-                end: `${s.date}T${et}:00`,
-                classNames: isCancelled ? ['appt-cancelled'] : undefined,
-                backgroundColor: baseColors.backgroundColor,
-                borderColor: baseColors.borderColor,
-                textColor: baseColors.textColor,
-                extendedProps: {
-                  slotId: s.id,
-                  patientIndex: i,
-                  patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
-                  appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id || (apptAllForIndex?._id || apptAllForIndex?.id),
-                  isCancelled,
-                  status,
-                  location: s.location,
-                  scheduleId: s.schedule_id
-                }
-              })
-              console.debug('[schedules] pushed event', { slotId: s.id, index: i, title, isCancelled })
+
+              // If this index corresponds to a cancelled appointment, render two stacked events:
+              // 1) the cancelled appointment (muted gray, struck-through) rendered first (beneath)
+              // 2) an AVAILABLE overlay event (green "AVL") rendered after so it appears on top and is clickable
+              if (isCancelled) {
+                // cancelled (bottom) event
+                events.push({
+                  id: `${s.id}-${i}-cancelled`,
+                  title,
+                  start: `${s.date}T${st}:00`,
+                  end: `${s.date}T${et}:00`,
+                  classNames: ['appt-cancelled', 'appt-cancelled-bottom'],
+                  // muted gray colors
+                  backgroundColor: '#f3f4f6',
+                  borderColor: '#e5e7eb',
+                  textColor: '#374151',
+                  order: orderCounter++,
+                  extendedProps: {
+                    slotId: s.id,
+                    patientIndex: i,
+                    patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
+                    appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id || (apptAllForIndex?._id || apptAllForIndex?.id),
+                    isCancelled: true,
+                    status: 'CANCELLED',
+                    location: s.location,
+                    scheduleId: s.schedule_id
+                  }
+                })
+
+                // available overlay (top) event
+                events.push({
+                  id: `${s.id}-${i}-overlay`,
+                  title: 'AVL',
+                  start: `${s.date}T${st}:00`,
+                  end: `${s.date}T${et}:00`,
+                  classNames: ['appt-available-overlay'],
+                  backgroundColor: '#dcfce7',
+                  borderColor: '#dcfce7',
+                  textColor: '#166534',
+                  order: orderCounter++,
+                  extendedProps: {
+                    slotId: s.id,
+                    patientIndex: i,
+                    patientId: undefined,
+                    appointmentId: undefined,
+                    isCancelled: false,
+                    isOverlayForCancelled: true,
+                    status: 'AVAILABLE',
+                    location: s.location,
+                    scheduleId: s.schedule_id
+                  }
+                })
+                console.debug('[schedules] pushed cancelled+overlay events', { slotId: s.id, index: i, title })
+              } else {
+                events.push({
+                  id: `${s.id}-${i}`,
+                  title,
+                  start: `${s.date}T${st}:00`,
+                  end: `${s.date}T${et}:00`,
+                  order: orderCounter++,
+                  classNames: undefined,
+                  backgroundColor: baseColors.backgroundColor,
+                  borderColor: baseColors.borderColor,
+                  textColor: baseColors.textColor,
+                  extendedProps: {
+                    slotId: s.id,
+                    patientIndex: i,
+                    patientId: (apptForIndex && (apptForIndex.patient_id || apptForIndex.patient?.id)) || undefined,
+                    appointmentId: apptForIndex?._id || apptForIndex?.id || apptForIndex?.appointment_id || (apptAllForIndex?._id || apptAllForIndex?.id),
+                    isCancelled: false,
+                    status,
+                    location: s.location,
+                    scheduleId: s.schedule_id
+                  }
+                })
+                console.debug('[schedules] pushed event', { slotId: s.id, index: i, title, isCancelled: false })
+              }
             }
           }
         }
@@ -1216,6 +1280,7 @@ export default function SchedulesPage() {
             slotMinTime="07:00:00"
             scrollTime="07:00:00"
             events={events}
+              eventOrder="order"
             eventContent={(arg: any) => {
               try {
                 const isCancelled = !!arg.event.extendedProps?.isCancelled
@@ -1514,6 +1579,38 @@ export default function SchedulesPage() {
         .fc-event {
           cursor: pointer;
         }
+        `}</style>
+        <style jsx global>{`
+          /* Cancelled appointment (bottom) */
+          .fc .appt-cancelled {
+            background-color: #f3f4f6 !important;
+            border-color: #e5e7eb !important;
+            color: #374151 !important;
+            opacity: 1 !important;
+          }
+          .fc .appt-cancelled .fc-event-custom-title span,
+          .fc .appt-cancelled-bottom .fc-event-custom-title span {
+            text-decoration: line-through !important;
+            color: #374151 !important;
+            opacity: 0.95;
+            font-weight: 600;
+          }
+
+          /* The cancelled bottom event should render beneath overlays */
+          .fc .appt-cancelled-bottom {
+            z-index: 1 !important;
+          }
+
+          /* Green overlay for AVAILABLE on top of a cancelled slot */
+          .fc .appt-available-overlay {
+            background-color: #dcfce7 !important;
+            border-color: #dcfce7 !important;
+            color: #166534 !important;
+            z-index: 2 !important;
+          }
+
+          /* Ensure event content uses our custom span for styling */
+          .fc .fc-event .fc-event-custom-title span { display: inline-block; }
         `}</style>
       </div>
 
