@@ -1056,10 +1056,7 @@ export default function SchedulesPage() {
                 start: `${s.date}T${st}:00`,
                 end: `${s.date}T${et}:00`,
                 order: orderCounter++,
-                // If there was a cancelled appointment beneath this patient index,
-                // render the BOOKED event as an overlay anchored to the right so it
-                // visually matches the AVAILABLE overlay used for cancelled rebook slots.
-                classNames: lastCancelled ? ['appt-available-overlay'] : undefined,
+                classNames: undefined,
                 backgroundColor: baseColors.backgroundColor,
                 borderColor: baseColors.borderColor,
                 textColor: baseColors.textColor,
@@ -1069,7 +1066,9 @@ export default function SchedulesPage() {
                   patientId: (active.patient_id || active.patient?.id) || undefined,
                   appointmentId: active._id || active.id || active.appointment_id || undefined,
                   isCancelled: false,
-                  // mark as overlay for cancelled so eventDidMount can anchor/size it
+                  // mark as overlay for cancelled so eventDidMount will anchor/size it like AVL overlays
+                  // NOTE: we do NOT add the 'appt-available-overlay' class here so the booked
+                  // background (pink/red) remains. The flag only drives positioning/size.
                   isOverlayForCancelled: !!lastCancelled,
                   status: 'BOOKED',
                   location: s.location,
