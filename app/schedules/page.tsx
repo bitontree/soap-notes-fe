@@ -23,6 +23,7 @@ import { AppointmentDrawer } from "../../components/schedule/appointment-drawer"
 import { RescheduleDrawer } from "@/components/schedule/reschedule-drawer"
 import { X } from "lucide-react"
 import { createPortal } from "react-dom"
+import { color } from "html2canvas/dist/types/css/types/color"
 
 
 export default function SchedulesPage() {
@@ -31,99 +32,6 @@ export default function SchedulesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   // Appointment drawer open state (separate from schedule drawer)
   const [apptDrawerOpen, setApptDrawerOpen] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
-  // Appointment drawer specific initial values
-  const [apptInitialDate, setApptInitialDate] = useState<string | undefined>(undefined)
-  const [apptInitialLocation, setApptInitialLocation] = useState<string | undefined>(undefined)
-  const [apptInitialSlotId, setApptInitialSlotId] = useState<string | undefined>(undefined)
-  const [apptInitialSlotTime, setApptInitialSlotTime] = useState<string | undefined>(undefined)
-  const [apptInitialPatientIndex, setApptInitialPatientIndex] = useState<number | undefined>(undefined)
-
-  const [operationScope, setOperationScope] = useState<"this_day" | "subsequent_days" | "later_days">("this_day")
-  const [anchorDate, setAnchorDate] = useState<string>("")
-
-  // Create form state (in drawer)
-  const [startDate, setStartDate] = useState<string>("") // yyyy-MM-dd
-  const [endDate, setEndDate] = useState<string>("")
-  const [startTime, setStartTime] = useState<string>("")
-  const [endTime, setEndTime] = useState<string>("")
-  const [slotDuration, setSlotDuration] = useState<number>(30)
-  const [patientsPerSlot, setPatientsPerSlot] = useState<number>(1)
-  const [location, setLocation] = useState<string>("")
-  const [daysOfWeek, setDaysOfWeek] = useState<string[]>([])
-  const [recurringIntervalWeeks, setRecurringIntervalWeeks] = useState<number>(1)
-
-  const [creating, setCreating] = useState(false)
-  const [updatingSchedule, setUpdatingSchedule] = useState(false)
-  const [deletingSchedule, setDeletingSchedule] = useState(false)
-  const [deletingAppointment, setDeletingAppointment] = useState(false)
-  const [schedules, setSchedules] = useState<Schedule[]>([])
-  const [slots, setSlots] = useState<Slot[]>([])
-  const [scheduleDates, setScheduleDates] = useState<Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>([])
-  const [visibleFrom, setVisibleFrom] = useState<string>("")
-  const [visibleTo, setVisibleTo] = useState<string>("")
-  // Simple in-memory caches keyed by range
-  const monthDatesCacheRef = useRef<Map<string, Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>>(new Map())
-  const rangeSlotsCacheRef = useRef<Map<string, Slot[]>>(new Map())
-  // Fine-grained caches by date to prevent refetch between day/week switches
-  const scheduleDatesByDateRef = useRef<Map<string, Array<{ id: string; schedule_id: string; date: string; start_time: string; end_time: string; location: string }>>>(new Map())
-  const slotsByDateRef = useRef<Map<string, Slot[]>>(new Map())
-
-  function enumerateDates(fromISO: string, toISO: string): string[] {
-    const out: string[] = []
-    const start = new Date(fromISO + "T00:00:00Z")
-    const end = new Date(toISO + "T00:00:00Z")
-    for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
-      out.push(d.toISOString().slice(0,10))
-    }
-    return out
-  }
-  function nextDayISO(dateISO: string): string {
-    const d = new Date(dateISO + "T00:00:00Z")
-    d.setUTCDate(d.getUTCDate() + 1)
-    return d.toISOString().slice(0,10)
-  }
-
-  async function resolveLocationForAnchor(scheduleId: string, anchorISO: string): Promise<string | null> {
-    // 1) Try schedule_dates cache
-    const dayDates = scheduleDatesByDateRef.current.get(anchorISO) || []
-    const fromDates = dayDates.find(d => d.schedule_id === scheduleId)
-    if (fromDates?.location) return fromDates.location
-
-    // 2) Try slots cache
-    const daySlots = slotsByDateRef.current.get(anchorISO) || []
-    const fromSlots = daySlots.find(s => s.schedule_id === scheduleId)
-    if (fromSlots?.location) return fromSlots.location
-
-    // 3) Fallback: fetch one-day schedule_dates to determine location
-    try {
-      const dates = await schedulesApi.getScheduleDatesRange(anchorISO, nextDayISO(anchorISO))
-      // populate per-day cache
-      dates.forEach(item => {
-        const arr = scheduleDatesByDateRef.current.get(item.date) || []
-        scheduleDatesByDateRef.current.set(item.date, [...arr, item])
-      })
-      const match = dates.find(d => d.schedule_id === scheduleId)
-      if (match?.location) return match.location
-    } catch {}
-    return null
-  }
-  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false)
-  const [rescheduleScheduleId, setRescheduleScheduleId] = useState<string | null>(null)
-  const [rescheduleLocation, setRescheduleLocation] = useState<string>("")
-  const [initialTotalToReschedule, setInitialTotalToReschedule] = useState<number>(0)
-  const [remainingToReschedule, setRemainingToReschedule] = useState<number>(0)
-  const [selectedRescheduleDate, setSelectedRescheduleDate] = useState<string>("")
-  const [availableDates, setAvailableDates] = useState<Array<{date: string; available_slots: number}>>([])
-  const [lastRescheduleResult, setLastRescheduleResult] = useState<{
-    rescheduledCount: number;
-    conflicts: any[];
-  } | null>(null)
-  const [rescheduleLoading, setRescheduleLoading] = useState(false)
-  const [rescheduleScope, setRescheduleScope] = useState<"this_day" | "subsequent_days" | "later_days">("this_day")
-  const [rescheduleAnchorDate, setRescheduleAnchorDate] = useState<string>("")
-
   // React Hook Form for dirty tracking (no schema)
   const { reset: formReset, setValue: setFormValue, formState: { isDirty } } = useForm<CreateScheduleRequest>({
     mode: "onChange",
@@ -142,6 +50,58 @@ export default function SchedulesPage() {
 
   const [appointments, setAppointments] = useState<any[]>([])
   const [allAppointments, setAllAppointments] = useState<any[]>([])
+
+  // Core data/state for schedules/slots/calendar
+  const [schedules, setSchedules] = useState<Schedule[]>([])
+  const [slots, setSlots] = useState<Slot[]>([])
+  const [scheduleDates, setScheduleDates] = useState<any[]>([])
+
+  // Visible range for calendar and caching refs
+  const [visibleFrom, setVisibleFrom] = useState<string | null>(null)
+  const [visibleTo, setVisibleTo] = useState<string | null>(null)
+  const monthDatesCacheRef = useRef<Map<string, any[]>>(new Map())
+  const rangeSlotsCacheRef = useRef<Map<string, any[]>>(new Map())
+
+  // Appointment drawer initial props (when opening drawer)
+  const [apptInitialDate, setApptInitialDate] = useState<string | undefined>(undefined)
+  const [apptInitialLocation, setApptInitialLocation] = useState<string | undefined>(undefined)
+  const [apptInitialSlotId, setApptInitialSlotId] = useState<string | undefined>(undefined)
+  const [apptInitialSlotTime, setApptInitialSlotTime] = useState<string | undefined>(undefined)
+  const [apptInitialPatientIndex, setApptInitialPatientIndex] = useState<number | undefined>(undefined)
+
+  // Various UI flags and form values used across the file
+  const [creating, setCreating] = useState(false)
+  const [updatingSchedule, setUpdatingSchedule] = useState(false)
+  const [deletingSchedule, setDeletingSchedule] = useState(false)
+  const [deletingAppointment, setDeletingAppointment] = useState(false)
+
+  // Schedule editing form values
+  const [startDate, setStartDate] = useState<string>("")
+  const [endDate, setEndDate] = useState<string>("")
+  const [startTime, setStartTime] = useState<string>("07:00")
+  const [endTime, setEndTime] = useState<string>("07:30")
+  const [slotDuration, setSlotDuration] = useState<number>(30)
+  const [patientsPerSlot, setPatientsPerSlot] = useState<number>(1)
+  const [location, setLocation] = useState<string>("")
+  const [daysOfWeek, setDaysOfWeek] = useState<string[]>([])
+  const [recurringIntervalWeeks, setRecurringIntervalWeeks] = useState<number>(1)
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState<boolean>(false)
+  const [operationScope, setOperationScope] = useState<"this_day" | "subsequent_days" | "later_days">("this_day")
+  const [anchorDate, setAnchorDate] = useState<string>("")
+
+  // Reschedule modal state
+  const [rescheduleScheduleId, setRescheduleScheduleId] = useState<string | null>(null)
+  const [rescheduleLocation, setRescheduleLocation] = useState<string>("")
+  const [initialTotalToReschedule, setInitialTotalToReschedule] = useState<number>(0)
+  const [remainingToReschedule, setRemainingToReschedule] = useState<number>(0)
+  const [selectedRescheduleDate, setSelectedRescheduleDate] = useState<string>("")
+  const [lastRescheduleResult, setLastRescheduleResult] = useState<any | null>(null)
+  const [rescheduleScope, setRescheduleScope] = useState<"this_day" | "subsequent_days" | "later_days">("this_day")
+  const [rescheduleAnchorDate, setRescheduleAnchorDate] = useState<string>("")
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false)
+  const [availableDates, setAvailableDates] = useState<any[]>([])
+  const [rescheduleLoading, setRescheduleLoading] = useState(false)
 
   // Remove cancelled / historical appointments from UI lists so slots only show active bookings
   const sanitizeAppointments = (list: any[] | undefined | null) => {
@@ -186,6 +146,30 @@ export default function SchedulesPage() {
     }
   }, [currentView])
 
+  // On component mount (or reload), ensure any transient drawers/menus are
+  // reset. This prevents a stale drawer from remaining open after a page
+  // reload where the calendar view may default to month view.
+  useEffect(() => {
+    // Close appointment drawer and clear initial props
+    setApptDrawerOpen(false)
+    setApptInitialDate(undefined)
+    setApptInitialLocation(undefined)
+    setApptInitialSlotId(undefined)
+    setApptInitialSlotTime(undefined)
+    setApptInitialPatientIndex(undefined)
+
+    // Close reschedule and delete confirmations
+    setRescheduleOpen(false)
+    setReschedulePayload(null)
+    setConfirmDeleteOpen(false)
+    setConfirmDeleteSlot(null)
+    setSlotMenuOpen(false)
+    setSlotMenuSlotId(null)
+    setSlotMenuPatientIndex(null)
+    setSlotMenuPatientId(null)
+    // No cleanup required; this runs on mount only
+  }, [])
+
   // Normalize slot object from backend to local Slot shape expected by the calendar
   const normalizeSlot = (s: any): Slot => {
     if (!s) return s as Slot
@@ -203,6 +187,29 @@ export default function SchedulesPage() {
       status: (s.status ?? s.state ?? "AVAILABLE") as any,
       location: s.location ?? s.place ?? s.clinic ?? "",
     }
+  }
+
+  // Try to resolve a location string for a given scheduleId on an anchor date.
+  // Used when deleting schedules with reschedule requirements to find a location
+  // associated with the anchored day. Falls back to searching scheduleDates,
+  // slots, and schedules state. Returns null when not found.
+  async function resolveLocationForAnchor(scheduleId: string, anchorISO: string): Promise<string | null> {
+    try {
+      // 1) Try scheduleDates (per-day overrides)
+      const byDate = (scheduleDates || []).find((d: any) => String(d.schedule_id) === String(scheduleId) && d.date === anchorISO)
+      if (byDate && byDate.location) return byDate.location
+
+      // 2) Try slots for the anchor date
+      const slotForDate = (slots || []).find((s: any) => String(s.schedule_id) === String(scheduleId) && s.date === anchorISO)
+      if (slotForDate && slotForDate.location) return slotForDate.location
+
+      // 3) Try schedules master list
+      const sched = (schedules || []).find((s: any) => String(s.id) === String(scheduleId))
+      if (sched && sched.location) return sched.location
+    } catch (e) {
+      // ignore and fallthrough to null
+    }
+    return null
   }
 
   // Auto-load all schedules (range data fetched via datesSet)
@@ -919,13 +926,22 @@ export default function SchedulesPage() {
       })
     } else {
       // Week/Day view: show individual patient slots
-      // Build a lookup map for appointments per slot_id (array) so we can show correct patient per index
+      // Build lookup maps for appointments per slot_id.
+      // We prefer explicit `patient_index` when available so bookings target exact partitions.
       const apptBySlot = new Map<string, any[]>()
+      const apptBySlotByIndex = new Map<string, Map<number, any>>()
         ; (appointments || []).forEach((a: any) => {
           const key = String(a.slot_id)
           const list = apptBySlot.get(key) || []
           list.push(a)
           apptBySlot.set(key, list)
+          // if appointment carries an explicit patient_index, index it
+          const idx = (typeof a.patient_index === 'number') ? a.patient_index : (typeof a.patientIndex === 'number' ? a.patientIndex : undefined)
+          if (typeof idx === 'number') {
+            const map = apptBySlotByIndex.get(key) || new Map<number, any>()
+            map.set(idx, a)
+            apptBySlotByIndex.set(key, map)
+          }
         })
 
   // Also keep a map including cancelled/historical appointments so we can display them (struck-through)
@@ -1005,6 +1021,7 @@ export default function SchedulesPage() {
 
           // Get active appointments (live) and all/historical appointments for this slot
           const apptsForSlotRaw = apptBySlot.get(String(s.id)) || []
+          const apptsForSlotByIndex = apptBySlotByIndex.get(String(s.id)) || new Map<number, any>()
           const apptsAllForSlot = apptBySlotAll.get(String(s.id)) || []
 
           // Build an active sequence: start with live appointments, but also merge
@@ -1061,19 +1078,121 @@ export default function SchedulesPage() {
             const apptAllIsCancelled = (a: any) => !!(a && String((a.status || a.state || a.appointment_status || '').toString().toUpperCase()).includes('CANCEL'))
             const getId = (a: any) => String(a?._id || a?.id || a?.appointment_id || '')
 
-            for (let idx = 0; idx < maxPartitions; idx++) {
-              const apptForIndex = apptsForSlot[idx] || null
-              const apptAllForIndex = apptsAllForSlot[idx] || null
 
-              // Prefer live active appointment for this exact index
-              let active = apptForIndex || null
-              // If no live active but historical has a non-cancelled entry for this index,
-              // treat it as active (handles race where appointments hasn't updated yet)
-              if (!active && apptAllForIndex && !apptAllIsCancelled(apptAllForIndex)) {
-                active = apptAllForIndex
-              }
+            const usedAppointmentIds = new Set<string>()
+            // Determine the most-recent cancelled appointment for this slot (if any)
+            const cancelledCandidates = (apptsAllForSlot || []).filter(a => apptAllIsCancelled(a))
+            let latestCancelledOverall: any = null
+            if (cancelledCandidates.length) {
+              cancelledCandidates.sort((x: any, y: any) => {
+                const tx = Date.parse(String(x?.created_at || x?.createdAt || x?.created || 0)) || 0
+                const ty = Date.parse(String(y?.created_at || y?.createdAt || y?.created || 0)) || 0
+                return ty - tx
+              })
+              latestCancelledOverall = cancelledCandidates[0]
+            }
+            let cancelledShown = false
+            for (let idx = 0; idx < maxPartitions; idx++) {
+              // Prefer explicit patient_index-mapped appointment when present
+              const apptIndexed = apptsForSlotByIndex.get(idx) || null
+              const apptAllIndexed = apptsAllForSlot.find((a:any) => (typeof a.patient_index === 'number' && a.patient_index === idx)) || null
+
+              // Also derive by deterministic ordering as fallback
+              let apptForIndex = apptsForSlot[idx] || null
+              let apptAllForIndex = apptsAllForSlot[idx] || null
+              // If a positional appointment carries an explicit patient_index that
+              // does not match this idx, ignore it here — explicit indices should
+              // only be applied to their declared partition.
+              if (apptForIndex && typeof apptForIndex.patient_index === 'number' && apptForIndex.patient_index !== idx) apptForIndex = null
+              if (apptAllForIndex && typeof apptAllForIndex.patient_index === 'number' && apptAllForIndex.patient_index !== idx) apptAllForIndex = null
+
+              // Prefer live active appointment for this exact index, with preference order:
+              // 1) explicit indexed live appt, 2) explicit indexed historical appt (non-cancelled),
+              // 3) positional appt from merged list (apptsForSlot), 4) positional historical appt
+              let active = apptIndexed || null
+              if (!active && apptAllIndexed && !apptAllIsCancelled(apptAllIndexed)) active = apptAllIndexed
+              if (!active && apptForIndex) active = apptForIndex
+              if (!active && apptAllForIndex && !apptAllIsCancelled(apptAllForIndex)) active = apptAllForIndex
 
               const lastCancelled = (apptAllForIndex && apptAllIsCancelled(apptAllForIndex)) ? apptAllForIndex : null
+
+              // Avoid assigning the same appointment to multiple boxes. If this
+              // appointment id has already been used for another partition, skip
+              // it and fall through to other fallbacks.
+              const activeId = getId(active)
+              if (active && activeId && usedAppointmentIds.has(activeId)) {
+                active = null
+              }
+
+              // DEBUG: when diagnosing partition mismatch for specific slot/time,
+              // print relevant context to console. Limit to the suspected slot
+              // date/time (2025-09-23 13:30) to avoid noisy logs in production.
+              try {
+                const debugTargetDate = '2025-09-23'
+                const debugTargetStart = '13:30'
+                if (String(s.date) === debugTargetDate && st === debugTargetStart) {
+                  console.debug('[composite-debug] slotId', s.id, 'idx', idx, 'maxPartitions', maxPartitions)
+                  console.debug('[composite-debug] apptsForSlotRaw', apptsForSlotRaw)
+                  console.debug('[composite-debug] apptsAllForSlot', apptsAllForSlot)
+                  console.debug('[composite-debug] apptsForSlotByIndex map', Array.from(apptsForSlotByIndex.entries()))
+                  console.debug('[composite-debug] apptsForSlot (merged sorted)', apptsForSlot)
+                  console.debug('[composite-debug] latestCancelledOverall', latestCancelledOverall)
+                  console.debug('[composite-debug] active (selected for this idx)', active)
+                }
+              } catch (e) { /* ignore debug errors */ }
+
+              // If there is a latest cancelled appointment for the slot, it must
+              // be shown only at partition index 0. For idx > 0 we should not
+              // render cancelled names — show only booked name or AVL.
+              if (idx === 0 && latestCancelledOverall && !cancelledShown) {
+                const cancelledIdOverall = getId(latestCancelledOverall)
+                const fn = latestCancelledOverall.firstname || latestCancelledOverall.patient?.firstname || ''
+                const ln = latestCancelledOverall.lastname || latestCancelledOverall.patient?.lastname || ''
+                const cancelledName = `${fn} ${ln}`.trim() || 'Cancelled'
+                if (active && !usedAppointmentIds.has(getId(active))) {
+                  // Show cancelled name on left and booked overlay on right.
+                  // Store cancelledName separately so overlay uses the active booking's name.
+                  const afn = active.firstname || active.patient?.firstname || ''
+                  const aln = active.lastname || active.patient?.lastname || ''
+                  boxes.push({
+                    patientIndex: idx,
+                    // overlay title should show the active (booked) patient's name
+                    title: `${afn} ${aln}`.trim() || 'Booked',
+                    // keep flag so rendering knows there's a cancelled name to the left
+                    cancelledName: cancelledName,
+                    status: 'BOOKED',
+                    isCancelled: true,
+                    appointmentId: getId(active) || undefined,
+                    cancelledAppointmentId: cancelledIdOverall || undefined,
+                    // ensure we expose the active booking's patient id for click handling
+                    patientId: (active.patient_id || active.patient?.id || active.patient?._id) || undefined,
+                    // also expose cancelled patient's id for completeness
+                    cancelledPatientId: (latestCancelledOverall.patient_id || latestCancelledOverall.patient?.id || latestCancelledOverall.patient?._id) || undefined,
+                  })
+                  const aid = getId(active)
+                  if (aid) usedAppointmentIds.add(aid)
+                  if (cancelledIdOverall) usedAppointmentIds.add(cancelledIdOverall)
+                  cancelledShown = true
+                  continue
+                } else {
+                  // Show cancelled as AVAILABLE overlay when no active booking on idx 0
+                  boxes.push({
+                    patientIndex: idx,
+                    // overlay title in this case remains the cancelled name (visual bottom layer),
+                    // and status AVAILABLE will make the right overlay show AVL
+                    title: cancelledName,
+                    cancelledName: cancelledName,
+                    status: 'AVAILABLE',
+                    isCancelled: true,
+                    appointmentId: cancelledIdOverall || undefined,
+                    // expose cancelled patient's id so clicks can identify the patient
+                    patientId: (latestCancelledOverall.patient_id || latestCancelledOverall.patient?.id || latestCancelledOverall.patient?._id) || undefined,
+                  })
+                  if (cancelledIdOverall) usedAppointmentIds.add(cancelledIdOverall)
+                  cancelledShown = true
+                  continue
+                }
+              }
 
               if (active) {
                 const fn = active.firstname || active.patient?.firstname || ''
@@ -1084,18 +1203,10 @@ export default function SchedulesPage() {
                   status: 'BOOKED',
                   isCancelled: false,
                   appointmentId: getId(active) || undefined,
+                  patientId: (active.patient_id || active.patient?.id || active.patient?._id) || undefined,
                 })
-              } else if (lastCancelled) {
-                // Show cancelled name on left and AVAILABLE overlay on right
-                const fn = lastCancelled.firstname || lastCancelled.patient?.firstname || ''
-                const ln = lastCancelled.lastname || lastCancelled.patient?.lastname || ''
-                boxes.push({
-                  patientIndex: idx,
-                  title: `${fn} ${ln}`.trim() || 'Cancelled',
-                  status: 'AVAILABLE',
-                  isCancelled: true,
-                  appointmentId: getId(lastCancelled) || undefined,
-                })
+                const idAdded = getId(active)
+                if (idAdded) usedAppointmentIds.add(idAdded)
               } else {
                 // Empty partition: AVAILABLE
                 boxes.push({
@@ -1104,6 +1215,7 @@ export default function SchedulesPage() {
                   status: 'AVAILABLE',
                   isCancelled: false,
                   appointmentId: undefined,
+                  patientId: undefined,
                 })
               }
             }
@@ -1344,7 +1456,7 @@ export default function SchedulesPage() {
   }
 
   return (
-    <div className="relative p-6 space-y-4">
+    <div className="relative p-6 space-y-4 ">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Schedules</h1>
         <div className="flex items-center">
@@ -1358,7 +1470,79 @@ export default function SchedulesPage() {
               initialPatientIndex={apptInitialPatientIndex}
               side={currentView === "dayGridMonth" ? "left" : "right"}
               onOpenChange={(v) => { if (!v) { setApptInitialDate(undefined); setApptInitialLocation(undefined); setApptInitialSlotId(undefined); setApptInitialSlotTime(undefined); setApptInitialPatientIndex(undefined) } setApptDrawerOpen(v) }}
-              onBooked={() => { refreshSlotsAndSchedules() }}
+              onBooked={(createdAppt?: any) => {
+                try {
+                  if (!createdAppt || !createdAppt.slot_id) {
+                    refreshSlotsAndSchedules()
+                    return
+                  }
+
+                  // Ensure we have an id to dedupe; if backend didn't provide one yet,
+                  // create a lightweight client id to avoid duplicate insertion and flicker.
+                  const appt = { ...(createdAppt || {}) } as any
+                  if (!appt._id && !appt.id && !appt.appointment_id) {
+                    appt.__client_id = `cli-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+                  }
+                  const slotIdStr = String(appt.slot_id)
+                  const apptIdKey = String(appt._id || appt.id || appt.appointment_id || appt.__client_id || '')
+                  const pidx = (typeof appt.patient_index === 'number') ? appt.patient_index : (typeof appt.patientIndex === 'number' ? appt.patientIndex : undefined)
+
+                  // Merge the appointment into local arrays first so occupancy checks use merged view
+                  setAllAppointments(prev => {
+                    const prevArr = prev || []
+                    const exists = prevArr.find(a => String(a._id || a.id || a.appointment_id || a.__client_id || '') === apptIdKey)
+                    if (exists) return prevArr
+                    return [appt, ...prevArr]
+                  })
+
+                  setAppointments(prev => {
+                    const prevArr = prev || []
+                    const exists = prevArr.find(a => String(a._id || a.id || a.appointment_id || a.__client_id || '') === apptIdKey)
+                    const merged = exists ? prevArr.slice() : [appt, ...prevArr]
+                    return sanitizeAppointments(merged)
+                  })
+
+                  // Now rebuild the apptBySlotByIndex map from the merged appointments snapshot (use latest appointments state variable if available)
+                  const mergedSnapshot = (appointments || []).slice()
+                  // The `appointments` state may not reflect the immediate setState above yet; include the new appt manually to be safe.
+                  const snapshotWithNew = (() => {
+                    const found = mergedSnapshot.find(a => String(a._id || a.id || a.appointment_id || a.__client_id || '') === apptIdKey)
+                    if (found) return mergedSnapshot
+                    return [appt, ...mergedSnapshot]
+                  })()
+
+                  const apptBySlotByIndex = new Map<string, Map<number, any>>()
+                  snapshotWithNew.forEach((a:any) => {
+                    const key = String(a.slot_id)
+                    const idx = (typeof a.patient_index === 'number') ? a.patient_index : (typeof a.patientIndex === 'number' ? a.patientIndex : undefined)
+                    if (typeof idx === 'number') {
+                      const map = apptBySlotByIndex.get(key) || new Map<number, any>()
+                      map.set(idx, a)
+                      apptBySlotByIndex.set(key, map)
+                    }
+                  })
+
+                  const slotIndexMap = apptBySlotByIndex.get(slotIdStr) || new Map<number, any>()
+                  const targetOccupied = (typeof pidx === 'number') ? slotIndexMap.has(pidx) : false
+
+                  // Update slot occupancy only when target index was previously unoccupied in merged view
+                  if (!targetOccupied) {
+                    setSlots(prev => {
+                      return (prev || []).map(s => {
+                        if (String(s.id) !== slotIdStr) return s
+                        const copy = { ...s }
+                        if ((copy.current_patients || 0) < (copy.max_patients || 0)) copy.current_patients = (copy.current_patients || 0) + 1
+                        return copy
+                      })
+                    })
+                  }
+
+                  // Background reconciliation
+                  setTimeout(() => { refreshSlotsAndSchedules() }, 800)
+                } catch (e) {
+                  refreshSlotsAndSchedules()
+                }
+              }}
             />
           )}
           <Button onClick={() => {
@@ -1379,12 +1563,14 @@ export default function SchedulesPage() {
         </div>
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border bg-white p-3">
         {typeof window !== "undefined" && (
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             headerToolbar={{ left: "prev today next", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay" }}
+            buttonText={{ today: 'Today', month: 'Month', week: 'Week', day: 'Day' }}
+            allDayText={'all-day'}
             height="auto"
             slotMinTime="07:00:00"
             scrollTime="07:00:00"
@@ -1415,7 +1601,10 @@ export default function SchedulesPage() {
                             borderLeft: idx === 0 ? 'none' : '1px solid rgba(0,0,0,0.06)'
                           }
                           // left cancelled name (if any) and right overlay
-                          const cancelledName = isCancelled ? (b.title || 'Cancelled') : null
+                          // `cancelledName` may be stored separately from `title` so the
+                          // overlay can show the active (booked) patient's name while
+                          // the left side shows the most-recent cancelled name.
+                          const cancelledName = b.cancelledName || (isCancelled ? (b.title || 'Cancelled') : null)
                           const overlayStatus = status === 'BOOKED' ? 'BOOKED' : (status === 'AVAILABLE' ? 'AVAILABLE' : status)
 
                           // left area width when cancelled name exists (reserve ~20%)
@@ -1454,10 +1643,11 @@ export default function SchedulesPage() {
                                 data-patient-index={String(b.patientIndex ?? idx)}
                                 data-status={overlayStatus}
                                 data-appointment-id={String(b.appointmentId || '')}
+                                data-patient-id={String(b.patientId || '')}
                                 className="composite-box-overlay"
                                 style={rightStyle}
                               >
-                                <span style={{ display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: overlayStatus === 'BOOKED' ? 600 : 500 }}>{overlayStatus === 'BOOKED' ? (b.title || 'Booked') : (overlayStatus === 'AVAILABLE' ? 'AVL' : b.title)}</span>
+                                <span style={{ display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: overlayStatus === 'BOOKED' ? 600 : 500 }}>{overlayStatus === 'BOOKED' ? (b.title || 'Booked') : (overlayStatus === 'AVAILABLE' ? 'AVL' : (b.title || ''))}</span>
                               </div>
                             </div>
                           )
@@ -1705,8 +1895,16 @@ export default function SchedulesPage() {
                 }
                 const status = (found.dataset.status || '').toString().toUpperCase()
                 const slotId = found.dataset.slotId || props?.slotId || props?.slot_id || props?.slot
-                const patientIndex = typeof found.dataset.patientIndex !== 'undefined' ? Number(found.dataset.patientIndex) : null
-                const patientId = found.dataset.appointmentId || null
+                // prefer explicit patient id when provided on the DOM (data-patient-id)
+                const patientId = found.dataset.patientId || found.dataset.appointmentId || props?.patientId || null
+                const patientIndex = (typeof found.dataset.patientIndex !== 'undefined' && found.dataset.patientIndex !== '') ? Number(found.dataset.patientIndex) : null
+
+                // Debug click context to help trace UI vs drawer mismatches
+                try {
+                  console.debug('[composite-click] slotId', slotId, 'patientIndex', patientIndex, 'patientId', patientId, 'status', status)
+                  // Also log the extendedProps for the composite event for context
+                  console.debug('[composite-click] event.extendedProps', props)
+                } catch (e) { /* ignore */ }
 
                 // Blocked check (composite shouldn't be blocked but keep guard)
                 if (status === 'BLOCKED') { toast({ title: 'Blocked', description: 'This slot is blocked and cannot be modified.', variant: 'destructive' }); return }
@@ -1751,9 +1949,14 @@ export default function SchedulesPage() {
                 return
               }
 
-              // If the event is marked cancelled, treat it as AVAILABLE (open drawer to rebook)
+              // If the event is marked cancelled, ignore the click for single-patient
+              // events so the add-appointment drawer does not open (match composite behavior).
+              if (eventIsCancelled) {
+                return
+              }
+
               // AVAILABLE -> open appointment drawer (pre-fill date/location/time but patient empty)
-              if (status === "AVAILABLE" || eventIsCancelled) {
+              if (status === "AVAILABLE") {
                 // Fill appointment-drawer initial props
                 setApptInitialDate(slotDate)
                 setApptInitialLocation(slotLocation)
@@ -1766,15 +1969,6 @@ export default function SchedulesPage() {
 
               // OCCUPIED/BOOKED -> open slot action menu (reschedule/delete)
               if (status === "OCCUPIED" || status === "BOOKED") {
-                // If this specific event was cancelled, prefer opening the add drawer instead
-                if (eventIsCancelled) {
-                  setApptInitialDate(slotDate)
-                  setApptInitialLocation(slotLocation)
-                  setApptInitialSlotId(slotId)
-                  setApptInitialSlotTime(slotTime)
-                  if (currentView !== 'dayGridMonth') setApptDrawerOpen(true)
-                  return
-                }
                 // Position the menu near the click
                 const ev = info?.jsEvent || info?.domEvent
                 const x = ev?.clientX || 0

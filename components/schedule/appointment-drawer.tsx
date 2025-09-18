@@ -27,7 +27,7 @@ type Props = {
   initialSlotTime?: string
   initialPatientIndex?: number
   onOpenChange?: (open: boolean) => void
-  onBooked?: () => void
+  onBooked?: (appt?: any) => void
   side?: "left" | "right"
 }
 
@@ -348,7 +348,16 @@ const handleConfirm = () => {
       const res = await appointmentsApi.createForUser(userId, payload);
 
   toast({ title: "Appointment confirmed", description: `Appointment booked successfully.`, duration: 2000 });
-      try { if (typeof onBooked === "function") onBooked(); } catch (e) {}
+      try {
+        // Ensure we surface the intended patient_index to the parent even if
+        // the backend does not echo it back. Use the local apptInitialPatientIndex
+        // (set from incoming props) as the authoritative index when present.
+        const created = (res as any) || {}
+        if (typeof apptInitialPatientIndex === 'number' && typeof created.patient_index !== 'number') {
+          created.patient_index = apptInitialPatientIndex
+        }
+        if (typeof onBooked === "function") onBooked(created);
+      } catch (e) {}
       setOpen(false);
    // clear local initial index on close
    setApptInitialPatientIndex(undefined)
