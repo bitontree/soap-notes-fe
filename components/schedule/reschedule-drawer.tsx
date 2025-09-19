@@ -37,6 +37,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
   const [selectedDate, setSelectedDate] = React.useState<string | undefined>(initialDate)
   const [selectedLocation, setSelectedLocation] = React.useState<string | undefined>(initialLocation)
   const [displayPatient, setDisplayPatient] = React.useState<any | null>(patient || null)
+  const [loadingPatient, setLoadingPatient] = React.useState<boolean>(false)
 
   const [dates, setDates] = React.useState<string[]>([])
   const [locations, setLocations] = React.useState<string[]>([])
@@ -49,22 +50,32 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
 
   React.useEffect(() => {
     if (!open) return
-    setSelectedDate(initialDate)
-    setSelectedLocation(initialLocation)
+  setSelectedDate(initialDate)
+  setSelectedLocation(initialLocation)
+  // Clear or set immediate snapshot of displayPatient so previous patient's info
+  // does not flash while we fetch the target patient's data asynchronously.
+  setDisplayPatient(patient || null)
+  // If we need to fetch the patient (we have only an id), show loading state
+  setLoadingPatient(!patient && !!sourcePatientId)
     // populate displayPatient if not provided but we have sourcePatientId
     let cancelled = false
       ; (async () => {
         if (!patient && sourcePatientId) {
           try {
+            setLoadingPatient(true)
             const list = await authApi.getPatients()
             if (cancelled) return
             const found = (list || []).find((p: any) => String(p.id || p._id) === String(sourcePatientId)) || null
             setDisplayPatient(found)
           } catch (e) {
             // ignore
+          } finally {
+            if (!cancelled) setLoadingPatient(false)
           }
         } else {
+          // already set synchronously above; ensure consistent state
           setDisplayPatient(patient || null)
+          setLoadingPatient(false)
         }
       })()
       // load available dates from schedules
@@ -278,9 +289,18 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
           <div>
             <Label>Patient</Label>
             <div className="mt-2 p-3 border rounded-md bg-gray-50">
-              <div className="text-sm font-medium">{displayPatient ? `${displayPatient.firstname || ''} ${displayPatient.lastname || ''}`.trim() : 'Unknown patient'}</div>
-              {displayPatient?.email && <div className="text-xs text-muted-foreground">{displayPatient.email}</div>}
-              {displayPatient?.phone && <div className="text-xs text-muted-foreground">{displayPatient.phone}</div>}
+              <div className="text-sm font-medium">
+                {loadingPatient ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-t-2 border-gray-300" />
+                    <span>Loading patient...</span>
+                  </div>
+                ) : (
+                  (displayPatient ? `${displayPatient.firstname || ''} ${displayPatient.lastname || ''}`.trim() : 'Unknown patient')
+                )}
+              </div>
+              {!loadingPatient && displayPatient?.email && <div className="text-xs text-muted-foreground">{displayPatient.email}</div>}
+              {!loadingPatient && displayPatient?.phone && <div className="text-xs text-muted-foreground">{displayPatient.phone}</div>}
             </div>
           </div>
 

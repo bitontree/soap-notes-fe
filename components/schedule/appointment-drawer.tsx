@@ -63,6 +63,8 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const [newGender, setNewGender] = React.useState("")
   const [creatingPatient, setCreatingPatient] = React.useState(false)
   const [booking, setBooking] = React.useState(false)
+  // Local client-only waitlist state (no backend integration yet)
+  const [waitlist, setWaitlist] = React.useState<Array<{ id: string; name?: string; email?: string; phone?: string; date?: string; slotTime?: string }>>([])
   const searchRef = React.useRef<HTMLInputElement | null>(null)
 
   // Reset inline new-patient fields whenever the inline form is opened
@@ -535,8 +537,38 @@ const handleConfirm = () => {
               </div>
 
               <div className="pt-2">
-                <Button onClick={handleConfirm} className="w-full" disabled={booking}>{booking ? 'Booking...' : 'Book Appointment'}</Button>
+                <div className="flex gap-2">
+                  <Button onClick={handleConfirm} className="flex-1" disabled={booking}>{booking ? 'Booking...' : 'Book Appointment'}</Button>
+                  <Button variant="outline" onClick={() => {
+                    // Client-only: add selected patient/date/slot to local waitlist
+                    const patientName = selected ? `${selected.firstname || ''} ${selected.lastname || ''}`.trim() : `${newFirstname || ''} ${newLastname || ''}`.trim()
+                    const id = `wl-${Date.now()}-${Math.random().toString(36).slice(2,6)}`
+                    setWaitlist(prev => [{ id, name: patientName || 'Unknown', email: selected?.email || newEmail || undefined, phone: selected?.phone || newPhone || undefined, date, slotTime }, ...prev])
+                    toast({ title: 'Added to waitlist', description: `${patientName || 'Entry'} added to local waitlist`, duration: 2000 })
+                  }}>Join waitlist</Button>
+                </div>
               </div>
+              {/* Show local waitlist entries (client-only) */}
+              {waitlist.length > 0 && (
+                <div className="mt-4">
+                  <Label>Waitlist (local)</Label>
+                  <div className="mt-2 space-y-2 max-h-40 overflow-auto border rounded p-2">
+                    {waitlist.map(w => (
+                      <div key={w.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <div className="text-sm">
+                          <div className="font-medium">{w.name}</div>
+                          {w.email && <div className="text-xs text-muted-foreground">{w.email}</div>}
+                          {w.phone && <div className="text-xs text-muted-foreground">{w.phone}</div>}
+                          {w.date && <div className="text-xs text-muted-foreground">{w.date} {w.slotTime ? `· ${w.slotTime}` : ''}</div>}
+                        </div>
+                        <div>
+                          <Button variant="ghost" size="sm" onClick={() => setWaitlist(prev => prev.filter(x => x.id !== w.id))}>Remove</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </aside>
         </div>
