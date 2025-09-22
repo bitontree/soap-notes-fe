@@ -778,6 +778,44 @@ export const schedulesApi = {
     );
     return (res.data as any)?.slots ?? [];
   },
+
+  // Fetch dates with available slots for a window anchored to booked_date
+  // Endpoint: GET /schedules/dates-with-available-slots?booked_date=YYYY-MM-DD
+  async getDatesWithAvailableSlots(bookedDate: string): Promise<Array<{ date: string; available_slots: number }>> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<{ dates: Array<{ date: string; available_slots: number }> }>(
+      `/schedules/dates-with-available-slots`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { booked_date: bookedDate } }
+    );
+    return (res.data as any)?.dates ?? [];
+  },
+
+  // Return locations that have available slots on a specific date
+  // Endpoint: GET /schedules/locations-with-available-slots?target_date=YYYY-MM-DD
+  async getLocationsWithAvailableSlots(targetDate: string): Promise<Array<{ location: string; available_slots?: number }>> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<{ locations: Array<{ location: string; available_slots?: number }> }>(
+      `/schedules/locations-with-available-slots`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { target_date: targetDate } }
+    );
+    // Backend may return an array directly or wrapped under data
+    const payload = (res.data as any) || res;
+    return payload.locations ?? (Array.isArray(payload) ? payload : []);
+  },
+
+  // Return available slots for a given location and date
+  // Endpoint: GET /schedules/locations/{location}/slots?target_date=YYYY-MM-DD
+  async getSlotsForLocationAndDate(location: string, targetDate: string): Promise<Array<any>> {
+    const authHeaders = getAuthHeaders();
+    const apiKeyHeaders = getApiKeyAuthHeaders();
+    const res = await apiRequest<any>(
+      `/schedules/locations/${encodeURIComponent(location)}/slots`,
+      { method: "GET", headers: { ...authHeaders, ...apiKeyHeaders }, params: { target_date: targetDate } }
+    );
+    return (res.data as any) ?? [];
+  },
 };
 
 // ---------- Reports API (Biomarkers) ----------

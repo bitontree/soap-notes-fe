@@ -63,8 +63,6 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const [newGender, setNewGender] = React.useState("")
   const [creatingPatient, setCreatingPatient] = React.useState(false)
   const [booking, setBooking] = React.useState(false)
-  // Local client-only waitlist state (no backend integration yet)
-  const [waitlist, setWaitlist] = React.useState<Array<{ id: string; name?: string; email?: string; phone?: string; date?: string; slotTime?: string }>>([])
   const searchRef = React.useRef<HTMLInputElement | null>(null)
 
   // Reset inline new-patient fields whenever the inline form is opened
@@ -369,7 +367,37 @@ const handleConfirm = () => {
       setSlotId(undefined);
       setSlotTime(undefined);
     } catch (e: any) {
-  toast({ title: "Booking failed", description: e?.message || "Could not book appointment", variant: "destructive", duration: 2000 });
+  // Normalize backend error responses so we show a clean, human message in the toast.
+  let description = "Could not book appointment";
+  try {
+    // Preferred location: { detail: { message: "..." } }
+    if (e?.detail?.message) {
+      description = e.detail.message;
+    } else if (e?.data?.detail?.message) {
+      description = e.data.detail.message;
+    } else if (e?.message) {
+      // e.message might be a JSON string with detail — try to parse it.
+      if (typeof e.message === "string") {
+        try {
+          const parsed = JSON.parse(e.message);
+          if (parsed?.detail?.message) description = parsed.detail.message;
+          else if (parsed?.message) description = parsed.message;
+          else description = e.message;
+        } catch {
+          description = e.message;
+        }
+      } else {
+        description = String(e.message);
+      }
+    } else if (typeof e === "string") {
+      description = e;
+    } else if (e?.data && typeof e.data === "string") {
+      description = e.data;
+    }
+  } catch {
+    description = "Could not book appointment";
+  }
+  toast({ title: "Booking failed", description, variant: "destructive", duration: 2000 });
     } finally {
       setBooking(false);
     }
@@ -537,38 +565,8 @@ const handleConfirm = () => {
               </div>
 
               <div className="pt-2">
-                <div className="flex gap-2">
-                  <Button onClick={handleConfirm} className="flex-1" disabled={booking}>{booking ? 'Booking...' : 'Book Appointment'}</Button>
-                  <Button variant="outline" onClick={() => {
-                    // Client-only: add selected patient/date/slot to local waitlist
-                    const patientName = selected ? `${selected.firstname || ''} ${selected.lastname || ''}`.trim() : `${newFirstname || ''} ${newLastname || ''}`.trim()
-                    const id = `wl-${Date.now()}-${Math.random().toString(36).slice(2,6)}`
-                    setWaitlist(prev => [{ id, name: patientName || 'Unknown', email: selected?.email || newEmail || undefined, phone: selected?.phone || newPhone || undefined, date, slotTime }, ...prev])
-                    toast({ title: 'Added to waitlist', description: `${patientName || 'Entry'} added to local waitlist`, duration: 2000 })
-                  }}>Join waitlist</Button>
-                </div>
+                <Button onClick={handleConfirm} className="w-full" disabled={booking}>{booking ? 'Booking...' : 'Book Appointment'}</Button>
               </div>
-              {/* Show local waitlist entries (client-only) */}
-              {waitlist.length > 0 && (
-                <div className="mt-4">
-                  <Label>Waitlist (local)</Label>
-                  <div className="mt-2 space-y-2 max-h-40 overflow-auto border rounded p-2">
-                    {waitlist.map(w => (
-                      <div key={w.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                        <div className="text-sm">
-                          <div className="font-medium">{w.name}</div>
-                          {w.email && <div className="text-xs text-muted-foreground">{w.email}</div>}
-                          {w.phone && <div className="text-xs text-muted-foreground">{w.phone}</div>}
-                          {w.date && <div className="text-xs text-muted-foreground">{w.date} {w.slotTime ? `· ${w.slotTime}` : ''}</div>}
-                        </div>
-                        <div>
-                          <Button variant="ghost" size="sm" onClick={() => setWaitlist(prev => prev.filter(x => x.id !== w.id))}>Remove</Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </aside>
         </div>

@@ -275,18 +275,47 @@ export default function SchedulesPage() {
       const list = await schedulesApi.list()
       if (cancelled) return
       setSchedules(list)
-      const allSlots: Slot[] = []
-      for (const s of list) {
-        try {
-          const sSlots = await schedulesApi.getSlotsForSchedule(s.id)
-          if (cancelled) return
-          allSlots.push(...(sSlots || []).map(normalizeSlot))
-        } catch (e) {
-          // continue
+
+      // Prefer a single range fetch for visible calendar window (if set) to avoid
+      // N+1 per-schedule API calls. Fall back to per-schedule aggregation only if
+      // the range endpoint fails or is unavailable.
+      let allSlots: Slot[] = []
+      try {
+        if (visibleFrom && visibleTo) {
+          const rangeSlots = await schedulesApi.getSlotsRange(visibleFrom, visibleTo)
+          if (!cancelled) {
+            allSlots = (rangeSlots || []).map(normalizeSlot)
+            setSlots(allSlots)
+          }
+        } else {
+          // no visible range, fallback to fetching per-schedule (legacy)
+          const acc: Slot[] = []
+          for (const s of list) {
+            try {
+              const sSlots = await schedulesApi.getSlotsForSchedule(s.id)
+              if (cancelled) return
+              acc.push(...(sSlots || []).map(normalizeSlot))
+            } catch (e) {
+              // continue
+            }
+          }
+          if (!cancelled) setSlots(acc)
         }
+      } catch (err) {
+        // If range fetch fails, fallback to per-schedule aggregation
+        console.warn('getSlotsRange failed in refreshSlotsAndSchedules, falling back to per-schedule fetch', err)
+        const acc: Slot[] = []
+        for (const s of list) {
+          try {
+            const sSlots = await schedulesApi.getSlotsForSchedule(s.id)
+            if (cancelled) return
+            acc.push(...(sSlots || []).map(normalizeSlot))
+          } catch (e) {
+            // continue
+          }
+        }
+        if (!cancelled) setSlots(acc)
       }
-      if (cancelled) return
-      setSlots(allSlots)
       // refresh appointments too
       try {
         const user = JSON.parse(localStorage.getItem("user") || "{}")
