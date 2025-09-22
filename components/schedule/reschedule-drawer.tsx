@@ -34,8 +34,9 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
 
   const { toast } = useToast()
 
-  const [selectedDate, setSelectedDate] = React.useState<string | undefined>(initialDate)
-  const [selectedLocation, setSelectedLocation] = React.useState<string | undefined>(initialLocation)
+  // Do not pre-select date/location — always start blank when opening
+  const [selectedDate, setSelectedDate] = React.useState<string | undefined>(undefined)
+  const [selectedLocation, setSelectedLocation] = React.useState<string | undefined>(undefined)
   const [displayPatient, setDisplayPatient] = React.useState<any | null>(patient || null)
   const [loadingPatient, setLoadingPatient] = React.useState<boolean>(false)
 
@@ -50,8 +51,15 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
 
   React.useEffect(() => {
     if (!open) return
-  setSelectedDate(initialDate)
-  setSelectedLocation(initialLocation)
+  // Always clear selection state when opening the drawer. We still use
+  // `initialDate`/`initialLocation` to anchor backend queries where helpful,
+  // but nothing should be pre-selected or shown in the UI other than patient info.
+  setSelectedDate(undefined)
+  setSelectedLocation(undefined)
+  setCandidateSlots([])
+  setSelectedSlotId(null)
+  setLocations([])
+  setDates([])
   // Clear or set immediate snapshot of displayPatient so previous patient's info
   // does not flash while we fetch the target patient's data asynchronously.
   setDisplayPatient(patient || null)
@@ -412,7 +420,6 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
                 <SelectValue placeholder={loadingDates ? 'Loading dates...' : 'Choose a date'} />
               </SelectTrigger>
               <SelectContent>
-                {(dates.length === 0 && initialDate) && <SelectItem value={initialDate}>{initialDate}</SelectItem>}
                 {dates.map(d => (
                   <SelectItem key={d} value={d}>{d}</SelectItem>
                 ))}
@@ -427,7 +434,6 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
                 <SelectValue placeholder={loadingLocations ? 'Loading locations...' : 'Choose location'} />
               </SelectTrigger>
               <SelectContent>
-                {(locations.length === 0 && initialLocation) && <SelectItem value={initialLocation}>{initialLocation}</SelectItem>}
                 {locations.map(l => (
                   <SelectItem key={l} value={l}>{l}</SelectItem>
                 ))}
@@ -458,7 +464,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
                 })()
               ) : (
                 <div className="mt-2 space-y-2 max-h-40 overflow-auto border rounded p-2">
-                  {candidateSlots.length === 0 && <div className="text-sm text-muted-foreground">No available slots for selected date/location</div>}
+                  {candidateSlots.length === 0 && <div className="text-sm text-muted-foreground">Please select a date and location first</div>}
                   {candidateSlots.map(cs => (
                     <button key={cs.id} className={`w-full text-left p-2 rounded ${selectedSlotId === cs.id ? 'bg-blue-50 border' : 'hover:bg-gray-50'}`} onClick={() => { setSelectedSlotId(cs.id); setShowSlotList(false); }}>
                       <div className="flex items-center justify-between">
