@@ -13,6 +13,59 @@ const apiClient = axios.create({
   timeout: 10000,
 });
 
+// ---------- Request ID interceptor ----------
+// Ensure every outgoing request from the UI carries a unique request id
+// so the backend can trace/correlate requests. We attach it as
+// the `request-id` header. Use crypto.randomUUID() when available
+// and fall back to a v4 generator.
+function generateRequestId(): string {
+  try {
+    if (typeof (globalThis as any).crypto !== "undefined" && typeof (globalThis as any).crypto.randomUUID === "function") {
+      return (globalThis as any).crypto.randomUUID();
+    }
+  } catch (e) {
+    // ignore and fallback
+  }
+
+  // Simple RFC4122 v4 fallback using Math.random. Good enough for client-side tracing.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function getRequestIdHeader(): Record<string, string> {
+  return { 'request-id': generateRequestId() };
+}
+
+// Attach interceptor to the global axios instance (covers direct `axios.post` calls)
+axios.interceptors.request.use((config) => {
+  try {
+    config.headers = config.headers || {};
+    // Preserve any existing request id if caller provided one
+    if (!config.headers['request-id'] && !config.headers['Request-Id']) {
+      config.headers['request-id'] = generateRequestId();
+    }
+  } catch (e) {
+    // ignore errors in interceptor to avoid breaking requests
+  }
+  return config;
+});
+
+// Also attach to the local apiClient instance to be explicit
+apiClient.interceptors.request.use((config) => {
+  try {
+    config.headers = config.headers || {};
+    if (!config.headers['request-id'] && !config.headers['Request-Id']) {
+      config.headers['request-id'] = generateRequestId();
+    }
+  } catch (e) {
+    // ignore
+  }
+  return config;
+});
+
 // ---------- Interfaces ----------
 
 interface ApiResponse<T> {
