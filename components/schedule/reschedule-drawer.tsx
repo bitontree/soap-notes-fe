@@ -34,9 +34,11 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
 
   const { toast } = useToast()
 
-  const [selectedDate, setSelectedDate] = React.useState<string | undefined>(initialDate)
-  const [selectedLocation, setSelectedLocation] = React.useState<string | undefined>(initialLocation)
+  // Do not pre-select date/location — always start blank when opening
+  const [selectedDate, setSelectedDate] = React.useState<string | undefined>(undefined)
+  const [selectedLocation, setSelectedLocation] = React.useState<string | undefined>(undefined)
   const [displayPatient, setDisplayPatient] = React.useState<any | null>(patient || null)
+  const [loadingPatient, setLoadingPatient] = React.useState<boolean>(false)
 
   const [dates, setDates] = React.useState<string[]>([])
   const [locations, setLocations] = React.useState<string[]>([])
@@ -49,28 +51,60 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
 
   React.useEffect(() => {
     if (!open) return
-    setSelectedDate(initialDate)
-    setSelectedLocation(initialLocation)
+  // Always clear selection state when opening the drawer. We still use
+  // `initialDate`/`initialLocation` to anchor backend queries where helpful,
+  // but nothing should be pre-selected or shown in the UI other than patient info.
+  setSelectedDate(undefined)
+  setSelectedLocation(undefined)
+  setCandidateSlots([])
+  setSelectedSlotId(null)
+  setLocations([])
+  setDates([])
+  // Clear or set immediate snapshot of displayPatient so previous patient's info
+  // does not flash while we fetch the target patient's data asynchronously.
+  setDisplayPatient(patient || null)
+  // If we need to fetch the patient (we have only an id), show loading state
+  setLoadingPatient(!patient && !!sourcePatientId)
     // populate displayPatient if not provided but we have sourcePatientId
     let cancelled = false
       ; (async () => {
         if (!patient && sourcePatientId) {
           try {
+            setLoadingPatient(true)
             const list = await authApi.getPatients()
             if (cancelled) return
             const found = (list || []).find((p: any) => String(p.id || p._id) === String(sourcePatientId)) || null
             setDisplayPatient(found)
           } catch (e) {
             // ignore
+          } finally {
+            if (!cancelled) setLoadingPatient(false)
           }
         } else {
+          // already set synchronously above; ensure consistent state
           setDisplayPatient(patient || null)
+          setLoadingPatient(false)
         }
       })()
       // load available dates from schedules
       ; (async () => {
         setLoadingDates(true)
         try {
+          // If we have an initial booked date, prefer the backend endpoint
+          // which returns a 30-day window anchored to that booked_date.
+          if (initialDate) {
+            try {
+              const datesResp = await schedulesApi.getDatesWithAvailableSlots(initialDate)
+              if (cancelled) return
+              const onlyDates = (datesResp || []).map((d: any) => d.date).filter(Boolean)
+              setDates(Array.from(new Set(onlyDates)).sort())
+              return
+            } catch (err) {
+              console.warn('getDatesWithAvailableSlots failed, falling back to aggregation', err)
+            }
+          }
+
+          // Fallback: aggregate dates from schedules/slots
           const list = await schedulesApi.list()
           if (cancelled) return
           const datesSet = new Set<string>()
@@ -99,20 +133,46 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
       ; (async () => {
         setLoadingLocations(true)
         try {
-          const list = await schedulesApi.list()
-          if (cancelled) return
-          const locSet = new Set<string>()
-          for (const sched of list) {
-            try {
-              const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
-                ; (sSlots || []).forEach((ss: any) => {
-                  if (ss?.date === selectedDate && ss?.location) locSet.add(ss.location)
-                })
-            } catch (e) {
-              // ignore per-schedule errors
-            }
+          // Prefer backend endpoint that returns locations with available slots for the date
+          try {
+            const locs = await schedulesApi.getLocationsWithAvailableSlots(selectedDate)
+            if (cancelled) return
+            const onlyLocations = (locs || []).map((l: any) => l.location).filter(Boolean)
+            setLocations(Array.from(new Set(onlyLocations)))
+            return
+          } catch (err) {
+            console.warn('getLocationsWithAvailableSlots failed, falling back', err)
           }
-          setLocations(Array.from(locSet))
+
+          // Fallback: fetch all slots for the date in a single call and derive locations
+          try {
+            const allSlots = await schedulesApi.getSlotsRange(selectedDate, selectedDate)
+            if (cancelled) return
+            const locSet = new Set<string>()
+            ;(allSlots || []).forEach((ss: any) => {
+              if (ss?.date === selectedDate && ss?.location) locSet.add(ss.location)
+            })
+            setLocations(Array.from(locSet))
+            return
+          } catch (err) {
+            // Fallback to per-schedule loop only if getSlotsRange is unavailable
+            console.warn('getSlotsRange failed, falling back to per-schedule aggregation', err)
+            const list = await schedulesApi.list()
+            if (cancelled) return
+            const locSet = new Set<string>()
+            for (const sched of list) {
+              try {
+                const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
+                  ; (sSlots || []).forEach((ss: any) => {
+                    if (ss?.date === selectedDate && ss?.location) locSet.add(ss.location)
+                  })
+              } catch (e) {
+                // ignore per-schedule errors
+              }
+            }
+            setLocations(Array.from(locSet))
+            return
+          }
         } catch (e) {
           // ignore
         } finally {
@@ -131,27 +191,65 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
     if (!selectedDate || !selectedLocation) return
       ; (async () => {
         try {
-          const list = await schedulesApi.list()
-          if (cancelled) return
-          const slotsAcc: any[] = []
-          for (const sched of list) {
-            try {
-              const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
-                ; (sSlots || []).forEach((ss: any) => {
-                  if (ss?.date === selectedDate && ss?.location === selectedLocation) {
-                    // consider available slots only
-                    if (!ss.status || String(ss.status).toUpperCase() === 'AVAILABLE' || ss.current_patients < (ss.max_patients || 1)) {
-                      slotsAcc.push({ id: String(ss.id || ss.slot_id), start: ss.start_time, end: ss.end_time, schedule_id: sched.id, raw: ss })
-                    }
-                  }
-                })
-            } catch (e) {
-              // ignore per-schedule error
-            }
+          // Prefer backend single-call to fetch slots for the location+date
+          try {
+            const slots = await schedulesApi.getSlotsForLocationAndDate(selectedLocation, selectedDate)
+            if (cancelled) return
+            const slotsAcc: any[] = (slots || []).map((ss: any) => ({ id: String(ss.id || ss.slot_id), start: ss.start_time || ss.start, end: ss.end_time || ss.end, schedule_id: ss.schedule_id || ss.scheduleId || undefined, raw: ss }))
+            // filter availability
+            const filtered = slotsAcc.filter((s: any) => {
+              const raw = s.raw || {}
+              const status = raw.status || raw.state || null
+              const maxPatients = Number(raw.max_patients ?? raw.patients_per_slot ?? raw.capacity ?? 1)
+              const current = Number(raw.current_patients ?? raw.filled_count ?? raw.booked_count ?? 0)
+              return (!status || String(status).toUpperCase() === 'AVAILABLE' || current < maxPatients)
+            })
+            filtered.sort((a: any, b: any) => String(a.start).localeCompare(String(b.start)))
+            if (!cancelled) setCandidateSlots(filtered)
+            return
+          } catch (err) {
+            console.warn('getSlotsForLocationAndDate failed, falling back', err)
           }
-          // sort by start time
-          slotsAcc.sort((a, b) => String(a.start).localeCompare(String(b.start)))
-          if (!cancelled) setCandidateSlots(slotsAcc)
+
+          // Fallback: fetch all slots for the date in a single call and filter by location
+          try {
+            const allSlots = await schedulesApi.getSlotsRange(selectedDate, selectedDate)
+            if (cancelled) return
+            const slotsAcc: any[] = []
+            ;(allSlots || []).forEach((ss: any) => {
+              if (ss?.date === selectedDate && ss?.location === selectedLocation) {
+                if (!ss.status || String(ss.status).toUpperCase() === 'AVAILABLE' || ss.current_patients < (ss.max_patients || 1)) {
+                  slotsAcc.push({ id: String(ss.id || ss.slot_id), start: ss.start_time || ss.start, end: ss.end_time || ss.end, schedule_id: ss.schedule_id || ss.scheduleId || undefined, raw: ss })
+                }
+              }
+            })
+            slotsAcc.sort((a, b) => String(a.start).localeCompare(String(b.start)))
+            if (!cancelled) setCandidateSlots(slotsAcc)
+            return
+          } catch (err) {
+            console.warn('getSlotsRange failed, falling back to per-schedule aggregation', err)
+            const list = await schedulesApi.list()
+            if (cancelled) return
+            const slotsAcc: any[] = []
+            for (const sched of list) {
+              try {
+                const sSlots = await schedulesApi.getSlotsForSchedule(sched.id)
+                  ; (sSlots || []).forEach((ss: any) => {
+                    if (ss?.date === selectedDate && ss?.location === selectedLocation) {
+                      if (!ss.status || String(ss.status).toUpperCase() === 'AVAILABLE' || ss.current_patients < (ss.max_patients || 1)) {
+                        slotsAcc.push({ id: String(ss.id || ss.slot_id), start: ss.start_time, end: ss.end_time, schedule_id: sched.id, raw: ss })
+                      }
+                    }
+                  })
+              } catch (e) {
+                // ignore per-schedule error
+              }
+            }
+            // sort by start time
+            slotsAcc.sort((a, b) => String(a.start).localeCompare(String(b.start)))
+            if (!cancelled) setCandidateSlots(slotsAcc)
+            return
+          }
         } catch (e) {
           // ignore
         }
@@ -167,7 +265,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
     try {
       // require a specific slot selection (from candidateSlots)
       if (!selectedSlotId) {
-        toast({ title: 'Choose slot', description: 'Please select a specific slot/time', variant: 'destructive' })
+        toast({ title: 'Choose slot', description: 'Please select a specific slot/time', variant: 'destructive', duration: 2000 })
         return
       }
 
@@ -175,13 +273,35 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
       const userId = user.id || user._id
       const patientId = patient?.id || patient?._id || sourcePatientId
       if (!userId || !patientId) {
-        toast({ title: 'Missing user/patient', description: 'Login and patient info required', variant: 'destructive' })
+        toast({ title: 'Missing user/patient', description: 'Login and patient info required', variant: 'destructive', duration: 2000 })
         return
       }
       // Validate the selected slot by fetching the parent schedule's slots to get freshest state
-      const scheduleId = candidateSlots.find(c => c.id === selectedSlotId)?.schedule_id || candidateSlots[0]?.schedule_id
+      let scheduleId = candidateSlots.find(c => c.id === selectedSlotId)?.schedule_id || candidateSlots[0]?.schedule_id
+
+      // If schedule_id is missing, try a single-range fetch for the selected date to resolve mapping
+      if (!scheduleId && selectedDate) {
+        try {
+          const allSlots = await schedulesApi.getSlotsRange(selectedDate, selectedDate)
+          const mapping: Record<string, string> = {}
+          ;(allSlots || []).forEach((s: any) => {
+            const sid = String(s.id ?? s.slot_id ?? s._id ?? '')
+            const sched = s.schedule_id ?? s.scheduleId ?? s.parent_schedule_id ?? undefined
+            if (sid && sched) mapping[sid] = String(sched)
+          })
+          scheduleId = mapping[selectedSlotId] || undefined
+          if (scheduleId) {
+            // update candidateSlots in-memory so subsequent code can use schedule_id
+            setCandidateSlots(prev => prev.map(p => p.id === selectedSlotId ? { ...p, schedule_id: scheduleId } : p))
+          }
+        } catch (err) {
+          console.warn('getSlotsRange failed while resolving schedule_id', err)
+        }
+      }
+
       if (!scheduleId) {
-        toast({ title: 'Validation failed', description: 'Could not determine schedule for selected slot', variant: 'destructive' })
+        console.warn('Could not resolve schedule_id for selected slot', { selectedSlotId, candidateSlots, selectedDate })
+        toast({ title: 'Validation failed', description: 'Could not determine schedule for selected slot — please refresh and try again', variant: 'destructive' })
         return
       }
 
@@ -189,7 +309,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
         const freshSlots = await schedulesApi.getSlotsForSchedule(String(scheduleId))
         const match = (freshSlots || []).map((s: any) => ({ id: String(s.id || s.slot_id), start: s.start_time, end: s.end_time, schedule_id: String(scheduleId), raw: s })).find((x: any) => x.id === selectedSlotId)
         if (!match) {
-          toast({ title: 'Slot unavailable', description: 'Selected slot is no longer available. Please pick another slot.', variant: 'destructive' })
+          toast({ title: 'Slot unavailable', description: 'Selected slot is no longer available. Please pick another slot.', variant: 'destructive', duration: 2000 })
           // refresh candidate slots list
           setCandidateSlots(prev => prev.filter(p => p.id !== selectedSlotId))
           return
@@ -200,7 +320,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
         const maxPatients = Number(raw.max_patients ?? raw.patients_per_slot ?? raw.capacity ?? 1)
         const current = Number(raw.current_patients ?? raw.filled_count ?? raw.booked_count ?? 0)
         if (current >= maxPatients) {
-          toast({ title: 'Slot full', description: 'Selected slot is already full. Choose another time.', variant: 'destructive' })
+          toast({ title: 'Slot full', description: 'Selected slot is already full. Choose another time.', variant: 'destructive', duration: 2000 })
           return
         }
       } catch (e) {
@@ -232,15 +352,15 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
         // include source appointment id in body as some backends expect it
         payload.appointment_id = String(appointmentIdToUse)
       } catch (e) {
-        toast({ title: 'Failed', description: 'Could not lookup appointment for reschedule', variant: 'destructive' })
+        toast({ title: 'Failed', description: 'Could not lookup appointment for reschedule', variant: 'destructive', duration: 2000 })
         setRescheduling(false)
         return
       }
       const candidate = candidateSlots.find(c => c.id === selectedSlotId)
       if (candidate && candidate.schedule_id) payload.schedule_id = String(candidate.schedule_id)
 
-      const res = await appointmentsApi.reschedule(appointmentIdToUse, payload)
-  toast({ title: 'Rescheduled', description: res?.message || 'Appointment rescheduled', duration: 3000 })
+        const res = await appointmentsApi.reschedule(appointmentIdToUse, payload)
+        toast({ title: 'Rescheduled', description: res?.message || 'Appointment rescheduled', duration: 2000 })
       // call parent refresh if provided
       try { if (typeof onDone === 'function') onDone() } catch (e) { }
       setOpen(false)
@@ -278,9 +398,18 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
           <div>
             <Label>Patient</Label>
             <div className="mt-2 p-3 border rounded-md bg-gray-50">
-              <div className="text-sm font-medium">{displayPatient ? `${displayPatient.firstname || ''} ${displayPatient.lastname || ''}`.trim() : 'Unknown patient'}</div>
-              {displayPatient?.email && <div className="text-xs text-muted-foreground">{displayPatient.email}</div>}
-              {displayPatient?.phone && <div className="text-xs text-muted-foreground">{displayPatient.phone}</div>}
+              <div className="text-sm font-medium">
+                {loadingPatient ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-t-2 border-gray-300" />
+                    <span>Loading patient...</span>
+                  </div>
+                ) : (
+                  (displayPatient ? `${displayPatient.firstname || ''} ${displayPatient.lastname || ''}`.trim() : 'Unknown patient')
+                )}
+              </div>
+              {!loadingPatient && displayPatient?.email && <div className="text-xs text-muted-foreground">{displayPatient.email}</div>}
+              {!loadingPatient && displayPatient?.phone && <div className="text-xs text-muted-foreground">{displayPatient.phone}</div>}
             </div>
           </div>
 
@@ -291,7 +420,6 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
                 <SelectValue placeholder={loadingDates ? 'Loading dates...' : 'Choose a date'} />
               </SelectTrigger>
               <SelectContent>
-                {(dates.length === 0 && initialDate) && <SelectItem value={initialDate}>{initialDate}</SelectItem>}
                 {dates.map(d => (
                   <SelectItem key={d} value={d}>{d}</SelectItem>
                 ))}
@@ -306,7 +434,6 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
                 <SelectValue placeholder={loadingLocations ? 'Loading locations...' : 'Choose location'} />
               </SelectTrigger>
               <SelectContent>
-                {(locations.length === 0 && initialLocation) && <SelectItem value={initialLocation}>{initialLocation}</SelectItem>}
                 {locations.map(l => (
                   <SelectItem key={l} value={l}>{l}</SelectItem>
                 ))}
@@ -337,7 +464,7 @@ export function RescheduleDrawer({ open: controlledOpen, onOpenChange, patient, 
                 })()
               ) : (
                 <div className="mt-2 space-y-2 max-h-40 overflow-auto border rounded p-2">
-                  {candidateSlots.length === 0 && <div className="text-sm text-muted-foreground">No available slots for selected date/location</div>}
+                  {candidateSlots.length === 0 && <div className="text-sm text-muted-foreground">Please select a date and location first</div>}
                   {candidateSlots.map(cs => (
                     <button key={cs.id} className={`w-full text-left p-2 rounded ${selectedSlotId === cs.id ? 'bg-blue-50 border' : 'hover:bg-gray-50'}`} onClick={() => { setSelectedSlotId(cs.id); setShowSlotList(false); }}>
                       <div className="flex items-center justify-between">
