@@ -28,7 +28,10 @@ export default function ManagePatientsPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [isViewOpen, setIsViewOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null)
   const [editForm, setEditForm] = useState<Partial<Patient>>({})
+  const [isUpdating, setIsUpdating] = useState(false)
   const { toast } = useToast()
 
   async function loadPatients() {
@@ -46,14 +49,23 @@ export default function ManagePatientsPage() {
 
   useEffect(() => { loadPatients() }, [])
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this patient? This action cannot be undone.')) return
-    setDeletingId(id)
+  function openDeleteDialog(patient: Patient) {
+    setPatientToDelete(patient)
+    setIsDeleteOpen(true)
+  }
+
+  async function confirmDelete() {
+    if (!patientToDelete) return
+    setDeletingId(patientToDelete.id)
     try {
-      // UI-only delete: remove locally without calling backend
-      await new Promise((res) => setTimeout(res, 200))
-      setPatients(prev => prev.filter(p => p.id !== id))
-      toast({ title: 'Deleted', description: 'Patient removed.' })
+      // Call the actual API to delete the patient
+      await authApi.deletePatient(patientToDelete.id)
+      
+      // Remove from local state after successful soft deletion
+      setPatients(prev => prev.filter(p => p.id !== patientToDelete.id))
+      toast({ title: 'Patient Removed', description: 'Patient has been removed from your list.' })
+      setIsDeleteOpen(false)
+      setPatientToDelete(null)
     } catch (err: any) {
       console.error('Delete failed', err)
       toast({ title: 'Error', description: err?.message || 'Failed to delete patient', variant: 'destructive' })
@@ -107,7 +119,14 @@ export default function ManagePatientsPage() {
                             <DropdownMenuItem onClick={() => toast({ title: 'Export', description: 'Export not implemented' })}>
                               <Download className="mr-2 h-4 w-4" /> Export
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(p.id)}>
+                            <DropdownMenuItem 
+                              className="text-red-600" 
+                              onClick={() => openDeleteDialog(p)}
+                              disabled={deletingId === p.id}
+                            >
+                              {deletingId === p.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : null}
                               Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -131,24 +150,87 @@ export default function ManagePatientsPage() {
         setEditForm={setEditForm}
         setSelectedPatient={setSelectedPatient}
         setPatients={setPatients}
+        isDeleteOpen={isDeleteOpen}
+        setIsDeleteOpen={setIsDeleteOpen}
+        patientToDelete={patientToDelete}
+        setPatientToDelete={setPatientToDelete}
+        confirmDelete={confirmDelete}
+        deletingId={deletingId}
+        isUpdating={isUpdating}
+        setIsUpdating={setIsUpdating}
       />
     </div>
   )
 }
 
-function ManagePatientDialogs({ selectedPatient, isViewOpen, setIsViewOpen, isEditOpen, setIsEditOpen, editForm, setEditForm, setSelectedPatient, setPatients }: any) {
+function ManagePatientDialogs({ 
+  selectedPatient, isViewOpen, setIsViewOpen, isEditOpen, setIsEditOpen, 
+  editForm, setEditForm, setSelectedPatient, setPatients,
+  isDeleteOpen, setIsDeleteOpen, patientToDelete, setPatientToDelete, 
+  confirmDelete, deletingId, isUpdating, setIsUpdating 
+}: any) {
   const { toast } = useToast()
 
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedPatient) return
-    // UI-only: merge edits locally
-    const updated = { ...selectedPatient, ...editForm }
-    await new Promise((res) => setTimeout(res, 200))
-    setPatients((prev: any) => prev.map((p: any) => p.id === updated.id ? updated : p))
-    toast({ title: 'Updated', description: 'Patient updated.' })
-    setIsEditOpen(false)
-    setSelectedPatient(null)
+    
+    // Only send fields that have actually changed
+    const changedFields: Partial<Patient> = {}
+    
+    if (editForm.firstname !== undefined && editForm.firstname !== selectedPatient.firstname) {
+      changedFields.firstname = editForm.firstname
+    }
+    if (editForm.lastname !== undefined && editForm.lastname !== selectedPatient.lastname) {
+      changedFields.lastname = editForm.lastname
+    }
+    if (editForm.email !== undefined && editForm.email !== selectedPatient.email) {
+      changedFields.email = editForm.email
+    }
+    if (editForm.phone !== undefined && editForm.phone !== selectedPatient.phone) {
+      changedFields.phone = editForm.phone
+    }
+    if (editForm.dob !== undefined && editForm.dob !== selectedPatient.dob) {
+      changedFields.dob = editForm.dob
+    }
+    
+    // If no fields were changed, show message and return
+    if (Object.keys(changedFields).length === 0) {
+      toast({ 
+        title: 'No Changes', 
+        description: 'No fields were modified.' 
+      })
+      return
+    }
+    
+    setIsUpdating(true)
+    try {
+      // Call the actual API to update the patient with only changed fields
+      const updatedPatient = await authApi.updatePatient(selectedPatient.id, changedFields)
+      
+      // Update local state with the response from server
+      setPatients((prev: any) => prev.map((p: any) => 
+        p.id === updatedPatient.id ? updatedPatient : p
+      ))
+      
+      const fieldNames = Object.keys(changedFields).join(', ')
+      toast({ 
+        title: 'Updated', 
+        description: `Updated ${fieldNames} successfully.` 
+      })
+      setIsEditOpen(false)
+      setSelectedPatient(null)
+      setEditForm({})
+    } catch (err: any) {
+      console.error('Update failed', err)
+      toast({ 
+        title: 'Error', 
+        description: err?.message || 'Failed to update patient', 
+        variant: 'destructive' 
+      })
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
   return (
@@ -194,10 +276,70 @@ function ManagePatientDialogs({ selectedPatient, isViewOpen, setIsViewOpen, isEd
               <Input type="date" value={editForm?.dob || ''} onChange={(e) => setEditForm((s:any) => ({ ...s, dob: e.target.value }))} />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => { setIsEditOpen(false); setSelectedPatient(null) }}>Cancel</Button>
-              <Button type="submit">Save</Button>
+              <Button 
+                variant="ghost" 
+                onClick={() => { 
+                  setIsEditOpen(false); 
+                  setSelectedPatient(null);
+                  setEditForm({});
+                }}
+                disabled={isUpdating}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save'
+                )}
+              </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteOpen} onOpenChange={(v:any) => { 
+        setIsDeleteOpen(v); 
+        if (!v) setPatientToDelete(null) 
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove Patient</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <p>Are you sure you want to remove <strong>{patientToDelete ? `${patientToDelete.firstname || ''} ${patientToDelete.lastname || ''}`.trim() : 'this patient'}</strong> from your list?</p>
+            <p className="text-sm text-gray-600">The patient will be removed from your view but their data will be preserved.</p>
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="ghost" 
+                onClick={() => { 
+                  setIsDeleteOpen(false); 
+                  setPatientToDelete(null) 
+                }}
+                disabled={deletingId === patientToDelete?.id}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={confirmDelete}
+                disabled={deletingId === patientToDelete?.id}
+              >
+                {deletingId === patientToDelete?.id ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Removing...
+                  </>
+                ) : (
+                  'Remove'
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
