@@ -40,7 +40,7 @@ export default function LoginPage() {
               <Stethoscope className="h-8 w-8 text-blue-600" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl font-bold text-gray-900">Welcome</CardTitle>
           <CardDescription>Sign in to your SOAP Medical Notes account</CardDescription>
         </CardHeader>
         <CardContent>

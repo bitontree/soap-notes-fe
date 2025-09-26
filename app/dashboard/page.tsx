@@ -219,9 +219,13 @@ export default function DashboardPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h4 className="font-medium text-gray-900">{note.patient_name || "Unknown Patient"}</h4>
+                          {/* Status badge intentionally hidden in UI for now. Keep the component here commented
+                              so it can be re-enabled later if needed. */}
+                          {/*
                           <Badge variant={note.status === "completed" ? "default" : "secondary"}>
                             {note.status || "unknown"}
                           </Badge>
+                          */}
                         </div>
                         <div className="text-sm text-gray-600 mt-1">
                           {note.type || "SOAP Note"} •{" "}
