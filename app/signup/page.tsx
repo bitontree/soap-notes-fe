@@ -2,25 +2,70 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/contexts/auth-context"
-import { Stethoscope, Loader2 } from "lucide-react"
+import { Stethoscope, Loader2, Eye, EyeOff } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useNameValidation } from "@/hooks/use-name-validation"
+import { useEmailValidation } from "@/hooks/use-email-validation"
 
 export default function SignupPage() {
   const firstNameValidation = useNameValidation("", { fieldName: "First Name" })
   const lastNameValidation = useNameValidation("", { fieldName: "Last Name" })
-  const [email, setEmail] = useState("")
+  const emailValidation = useEmailValidation("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const { signup, isLoading } = useAuth()
   const { toast } = useToast()
+
+  // Clear any browser auto-filled values on component mount
+  useEffect(() => {
+    // Function to clear form fields
+    const clearFormFields = () => {
+      // Clear state values
+      setPassword("")
+      setConfirmPassword("")
+      
+      // Reset validations
+      firstNameValidation.reset()
+      lastNameValidation.reset()
+      emailValidation.reset()
+      
+      // Also clear any values that might be in the DOM directly
+      const emailInput = document.getElementById('email') as HTMLInputElement
+      const passwordInput = document.getElementById('password') as HTMLInputElement
+      const confirmPasswordInput = document.getElementById('confirmPassword') as HTMLInputElement
+      const firstNameInput = document.getElementById('firstname') as HTMLInputElement
+      const lastNameInput = document.getElementById('lastname') as HTMLInputElement
+      
+      if (emailInput) emailInput.value = ""
+      if (passwordInput) passwordInput.value = ""
+      if (confirmPasswordInput) confirmPasswordInput.value = ""
+      if (firstNameInput) firstNameInput.value = ""
+      if (lastNameInput) lastNameInput.value = ""
+    }
+
+    // Clear immediately
+    clearFormFields()
+    
+    // Also clear after a small delay to catch any delayed auto-fill
+    const timer = setTimeout(clearFormFields, 100)
+    
+    // Clear again after page is fully loaded
+    const timer2 = setTimeout(clearFormFields, 500)
+
+    return () => {
+      clearTimeout(timer)
+      clearTimeout(timer2)
+    }
+  }, []) // Empty dependency array to run only once on mount
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,11 +73,21 @@ export default function SignupPage() {
     // Validate names
     const isFirstNameValid = firstNameValidation.validate()
     const isLastNameValid = lastNameValidation.validate()
+    const isEmailValid = emailValidation.validate()
 
     if (!isFirstNameValid || !isLastNameValid) {
       toast({
         title: "Invalid Name",
         description: "Please enter valid first and last names using only letters",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!isEmailValid) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address",
         variant: "destructive",
       })
       return
@@ -48,7 +103,7 @@ export default function SignupPage() {
     }
 
     try {
-      await signup(firstNameValidation.value, lastNameValidation.value, email, password)
+      await signup(firstNameValidation.value, lastNameValidation.value, emailValidation.value, password)
     } catch (error) {
       toast({
         title: "Signup Failed",
@@ -71,18 +126,20 @@ export default function SignupPage() {
           <CardDescription>Join SOAP Medical Notes today</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" data-form-type="signup">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstname">First Name</Label>
                 <Input
                   id="firstname"
+                  name="firstname"
                   type="text"
                   placeholder="John"
                   value={firstNameValidation.value}
                   onChange={firstNameValidation.handleChange}
                   onBlur={firstNameValidation.handleBlur}
                   className={firstNameValidation.displayError ? "border-red-500" : ""}
+                  autoComplete="given-name"
                   required
                 />
                 {firstNameValidation.displayError && (
@@ -93,12 +150,14 @@ export default function SignupPage() {
                 <Label htmlFor="lastname">Last Name</Label>
                 <Input
                   id="lastname"
+                  name="lastname"
                   type="text"
                   placeholder="Smith"
                   value={lastNameValidation.value}
                   onChange={lastNameValidation.handleChange}
                   onBlur={lastNameValidation.handleBlur}
                   className={lastNameValidation.displayError ? "border-red-500" : ""}
+                  autoComplete="family-name"
                   required
                 />
                 {lastNameValidation.displayError && (
@@ -110,32 +169,70 @@ export default function SignupPage() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="signup-email"
                 type="email"
                 placeholder="doctor@hospital.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={emailValidation.value}
+                onChange={emailValidation.handleChange}
+                autoComplete="new-email"
+                className={emailValidation.error ? "border-red-500" : ""}
                 required
               />
+              {emailValidation.error && (
+                <p className="text-sm text-red-500">{emailValidation.error}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="signup-password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? (
+                    <Eye className="h-4 w-4" />
+                  ) : (
+                    <EyeOff className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  name="signup-confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirmPassword ? (
+                    <Eye className="h-4 w-4" />
+                  ) : (
+                    <EyeOff className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
