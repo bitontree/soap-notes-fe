@@ -36,8 +36,10 @@ export function useNameSearch(
   })
 
   const setValue = useCallback((newValue: string) => {
+    // Step 1: Sanitize the input to remove invalid characters
     const valueToUse = autoSanitize ? sanitizeName(newValue) : newValue
     
+    // Step 2: Validate the sanitized input for business rules
     let validation: { isValid: boolean; error: string | null } = { isValid: true, error: null }
     if (validateOnChange && valueToUse.trim()) {
       validation = validateName(valueToUse, fieldName)
@@ -61,7 +63,7 @@ export function useNameSearch(
 
   const validate = useCallback(() => {
     if (!state.value.trim()) {
-      // Empty search is valid
+      // Empty search is valid for search fields
       setState(prev => ({
         ...prev,
         error: null,
@@ -71,6 +73,7 @@ export function useNameSearch(
       return true
     }
 
+    // Validate the sanitized value for business rules
     const validation = validateName(state.value, fieldName)
     setState(prev => ({
       ...prev,
@@ -115,14 +118,18 @@ export function createNameSearchHandler(
 ) {
   return (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value
+    // Step 1: Sanitize input to remove invalid characters
     const sanitized = sanitizeName(inputValue)
     
     setValue(sanitized)
     
-    // Optional validation callback
+    // Step 2: Validate sanitized input for business rules
     if (onValidation && sanitized.trim()) {
       const validation = validateName(sanitized, "Search")
       onValidation(validation.isValid, validation.error)
+    } else if (onValidation) {
+      // Empty is valid for search
+      onValidation(true, null)
     }
   }
 }

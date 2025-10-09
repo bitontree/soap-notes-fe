@@ -70,27 +70,40 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validate names
+    // Smart validation: Only check for business rules that sanitization can't fix
     const isFirstNameValid = firstNameValidation.validate()
     const isLastNameValid = lastNameValidation.validate()
     const isEmailValid = emailValidation.validate()
 
+    // Only show toast for empty fields or length issues (not format issues)
     if (!isFirstNameValid || !isLastNameValid) {
-      toast({
-        title: "Invalid Name",
-        description: "Please enter valid first and last names using only letters",
-        variant: "destructive",
-      })
-      return
+      const firstError = firstNameValidation.error
+      const lastError = lastNameValidation.error
+      
+      // Only show toast for business rule violations (empty, too long)
+      if (firstError?.includes('required') || firstError?.includes('must be') ||
+          lastError?.includes('required') || lastError?.includes('must be')) {
+        toast({
+          title: "Name Required",
+          description: "Please enter both first and last names",
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     if (!isEmailValid) {
-      toast({
-        title: "Invalid Email",
-        description: "Please enter a valid email address",
-        variant: "destructive",
-      })
-      return
+      const emailError = emailValidation.error
+      // Only show toast for business rule violations (empty, structure issues after sanitization)
+      if (emailError?.includes('required') || emailError?.includes('must contain') || 
+          emailError?.includes('must have')) {
+        toast({
+          title: "Email Required",
+          description: "Please enter a complete email address",
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     if (password !== confirmPassword) {

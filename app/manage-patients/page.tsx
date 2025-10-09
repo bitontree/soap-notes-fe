@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Eye, Download, MoreHorizontal, Loader2, Edit, Search } from "lucide-react"
 import { authApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
-import { validateName } from "@/lib/utils"
+import { sanitizeName, sanitizeEmail, validateName, validateEmail } from "@/lib/utils"
 import { useNameSearch } from "@/hooks/use-name-search"
 
 interface Patient {
@@ -220,28 +220,52 @@ function ManagePatientDialogs({
     e.preventDefault()
     if (!selectedPatient) return
     
-    // Validate names if they are being changed
+    // Smart validation: Only check for business rules that sanitization can't fix
     if (editForm.firstname !== undefined && editForm.firstname !== selectedPatient.firstname) {
       const firstNameValidation = validateName(editForm.firstname, "First Name")
       if (!firstNameValidation.isValid) {
-        toast({
-          title: "Invalid First Name",
-          description: firstNameValidation.error,
-          variant: "destructive",
-        })
-        return
+        const error = firstNameValidation.error
+        // Only show toast for business rule violations (empty, too long)
+        if (error?.includes('required') || error?.includes('must be')) {
+          toast({
+            title: "Invalid First Name",
+            description: error,
+            variant: "destructive",
+          })
+          return
+        }
       }
     }
     
     if (editForm.lastname !== undefined && editForm.lastname !== selectedPatient.lastname) {
       const lastNameValidation = validateName(editForm.lastname, "Last Name")
       if (!lastNameValidation.isValid) {
-        toast({
-          title: "Invalid Last Name", 
-          description: lastNameValidation.error,
-          variant: "destructive",
-        })
-        return
+        const error = lastNameValidation.error
+        // Only show toast for business rule violations (empty, too long)
+        if (error?.includes('required') || error?.includes('must be')) {
+          toast({
+            title: "Invalid Last Name", 
+            description: error,
+            variant: "destructive",
+          })
+          return
+        }
+      }
+    }
+
+    if (editForm.email !== undefined && editForm.email !== selectedPatient.email && editForm.email.trim()) {
+      const emailValidation = validateEmail(editForm.email)
+      if (!emailValidation.isValid) {
+        const error = emailValidation.error
+        // Only show toast for business rule violations (incomplete structure)
+        if (error?.includes('required') || error?.includes('must contain') || error?.includes('must have')) {
+          toast({
+            title: "Invalid Email",
+            description: error,
+            variant: "destructive",
+          })
+          return
+        }
       }
     }
     
@@ -327,15 +351,33 @@ function ManagePatientDialogs({
           <form onSubmit={submitEdit} className="space-y-4 mt-2">
             <div>
               <Label>First name</Label>
-              <Input value={editForm?.firstname || ''} onChange={(e) => setEditForm((s:any) => ({ ...s, firstname: e.target.value }))} />
+              <Input 
+                value={editForm?.firstname || ''} 
+                onChange={(e) => {
+                  const sanitized = sanitizeName(e.target.value)
+                  setEditForm((s:any) => ({ ...s, firstname: sanitized }))
+                }} 
+              />
             </div>
             <div>
               <Label>Last name</Label>
-              <Input value={editForm?.lastname || ''} onChange={(e) => setEditForm((s:any) => ({ ...s, lastname: e.target.value }))} />
+              <Input 
+                value={editForm?.lastname || ''} 
+                onChange={(e) => {
+                  const sanitized = sanitizeName(e.target.value)
+                  setEditForm((s:any) => ({ ...s, lastname: sanitized }))
+                }} 
+              />
             </div>
             <div>
               <Label>Email</Label>
-              <Input value={editForm?.email || ''} onChange={(e) => setEditForm((s:any) => ({ ...s, email: e.target.value }))} />
+              <Input 
+                value={editForm?.email || ''} 
+                onChange={(e) => {
+                  const sanitized = sanitizeEmail(e.target.value)
+                  setEditForm((s:any) => ({ ...s, email: sanitized }))
+                }} 
+              />
             </div>
             <div>
               <Label>Phone</Label>

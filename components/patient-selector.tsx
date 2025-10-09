@@ -91,17 +91,24 @@ export default function PatientSelector({
   const handleCreatePatient = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate names
+    // Smart validation: Only check for business rules that sanitization can't fix
     const isFirstNameValid = firstNameValidation.validate()
     const isLastNameValid = lastNameValidation.validate()
 
     if (!isFirstNameValid || !isLastNameValid) {
-      toast({
-        title: "Invalid Name",
-        description: "Please enter valid first and last names using only letters",
-        variant: "destructive",
-      })
-      return
+      const firstError = firstNameValidation.error
+      const lastError = lastNameValidation.error
+      
+      // Only show toast for business rule violations (empty, too long)
+      if (firstError?.includes('required') || firstError?.includes('must be') ||
+          lastError?.includes('required') || lastError?.includes('must be')) {
+        toast({
+          title: "Name Required",
+          description: "Please enter both first and last names",
+          variant: "destructive",
+        })
+        return
+      }
     }
     
     setIsCreating(true);

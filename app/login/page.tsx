@@ -23,14 +23,21 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validate email before submission
-    if (!emailValidation.validate()) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid email address.",
-        variant: "destructive",
-      })
-      return
+    // Smart validation: Only check for business rules that sanitization can't fix
+    const isEmailValid = emailValidation.validate()
+    
+    if (!isEmailValid) {
+      const emailError = emailValidation.error
+      // Only show toast for business rule violations (empty, incomplete structure)
+      if (emailError?.includes('required') || emailError?.includes('must contain') || 
+          emailError?.includes('must have')) {
+        toast({
+          title: "Email Required",
+          description: "Please enter a complete email address",
+          variant: "destructive",
+        })
+        return
+      }
     }
     
     try {

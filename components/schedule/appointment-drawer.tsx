@@ -17,6 +17,7 @@ import { authApi, schedulesApi } from "@/lib/api"
 import { appointmentsApi } from "@/lib/api"
 import { parseISO, isValid, format, differenceInYears } from 'date-fns'
 import { useNameValidation } from "@/hooks/use-name-validation"
+import { useEmailValidation } from "@/hooks/use-email-validation"
 import { validateName, sanitizeName } from "@/lib/utils"
 // Use country-list-with-dial-code-and-flag package (installed)
 import CountryList from 'country-list-with-dial-code-and-flag'
@@ -61,9 +62,11 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const firstNameValidation = useNameValidation("", { fieldName: "First Name" })
   const lastNameValidation = useNameValidation("", { fieldName: "Last Name" })
   
+  // Email validation hook
+  const emailValidation = useEmailValidation("")
+  
   const [newDobIso, setNewDobIso] = React.useState("") // yyyy-MM-dd for API
   const [newPhone, setNewPhone] = React.useState("")
-  const [newEmail, setNewEmail] = React.useState("")
   const [newPhoneCountry, setNewPhoneCountry] = React.useState("+91")
   const [newGender, setNewGender] = React.useState("")
   const [creatingPatient, setCreatingPatient] = React.useState(false)
@@ -75,9 +78,9 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
     if (showAddPatientForm) {
       firstNameValidation.reset()
       lastNameValidation.reset()
+      emailValidation.reset()
       setNewDobIso("")
       setNewPhone("")
-      setNewEmail("")
       setNewPhoneCountry("+91")
       setNewGender("")
     }
@@ -86,7 +89,7 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   // Derived validation state for enabling the Create button
   const phoneDigits = (newPhone || '').replace(/[^0-9]/g, '')
   const isPhoneValid = phoneDigits.length >= 5 && phoneDigits.length <= 11
-  const isEmailValid = newEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)
+  const isEmailValid = emailValidation.value && emailValidation.isValid
   const isDobValid = (() => {
     if (!newDobIso) return false
     const m = newDobIso.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
@@ -173,18 +176,6 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
       return 
     }
     
-    // Validate the entire name input
-    const nameValidation = validateName(name, "Patient Name")
-    if (!nameValidation.isValid) {
-      toast({ 
-        title: "Invalid Name", 
-        description: nameValidation.error || "Please enter a valid name using only letters", 
-        variant: "destructive", 
-        duration: 2000 
-      })
-      return
-    }
-    
     const parts = name.split(/\s+/)
     const firstname = parts.slice(0, -1).join(" ") || parts[0]
     const lastname = parts.length > 1 ? parts[parts.length - 1] : ""
@@ -229,14 +220,6 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
       }
     }
 
-    // validate email if provided
-    if (newEmail && newEmail.trim() !== "") {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
-        toast({ title: "Invalid email", description: "Enter a valid email address", variant: "destructive", duration: 2000 })
-        return
-      }
-    }
-
     // validate/normalize DOB and ensure year is 4 digits when provided
     let dobToSend: string | undefined = undefined
   if (newDobIso && newDobIso.trim() !== "") {
@@ -271,7 +254,7 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
         }
       } catch (e) { /* ignore and keep age 0 */ }
 
-      const created = await authApi.createPatient({ firstname, lastname, age: ageToSend, gender: newGender || "Other", dob: dobToSend, phone: fullPhone || undefined, email: newEmail || undefined } as any)
+      const created = await authApi.createPatient({ firstname, lastname, age: ageToSend, gender: newGender || "Other", dob: dobToSend, phone: fullPhone || undefined, email: emailValidation.value || undefined } as any)
 
       // Try to reload the full patients list from server so UI is authoritative
       try {
@@ -289,10 +272,10 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
       setQuery("")
       firstNameValidation.reset()
       lastNameValidation.reset()
+      emailValidation.reset()
       setNewDobIso("")
       setNewGender("Other")
       setNewPhone("")
-      setNewEmail("")
       setNewPhoneCountry("+91")
 
   toast({ title: "Patient added", description: `${created.firstname} ${created.lastname} added.`, duration: 2000 })
@@ -524,7 +507,15 @@ const handleConfirm = () => {
                             }} />
                           </div>
                           <Label>Email</Label>
-                          <Input placeholder="name@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+                          <Input 
+                            placeholder="name@example.com" 
+                            value={emailValidation.value} 
+                            onChange={emailValidation.handleChange}
+                            className={emailValidation.error ? "border-red-500" : ""}
+                          />
+                          {emailValidation.error && (
+                            <p className="text-sm text-red-500">{emailValidation.error}</p>
+                          )}
                           <Label>DOB</Label>
                           <div className="relative">
                             <Input
