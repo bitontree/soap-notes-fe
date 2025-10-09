@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { User, Plus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { authApi } from "@/lib/api";
+import { useNameValidation } from "@/hooks/use-name-validation";
 
 interface Patient {
   id: string;
@@ -52,10 +53,12 @@ export default function PatientSelector({
   const [activeTab, setActiveTab] = useState("select");
   const { toast } = useToast();
 
-  // Form state for new patient
+  // Name validation hooks
+  const firstNameValidation = useNameValidation("", { fieldName: "First Name" })
+  const lastNameValidation = useNameValidation("", { fieldName: "Last Name" })
+
+  // Form state for new patient (excluding names which are handled by validation hooks)
   const [newPatient, setNewPatient] = useState({
-    firstname: "",
-    lastname: "",
     age: "",
     gender: "",
     dob: "",
@@ -87,12 +90,26 @@ export default function PatientSelector({
 
   const handleCreatePatient = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate names
+    const isFirstNameValid = firstNameValidation.validate()
+    const isLastNameValid = lastNameValidation.validate()
+
+    if (!isFirstNameValid || !isLastNameValid) {
+      toast({
+        title: "Invalid Name",
+        description: "Please enter valid first and last names using only letters",
+        variant: "destructive",
+      })
+      return
+    }
+    
     setIsCreating(true);
 
     try {
       const patientData = {
-        firstname: newPatient.firstname,
-        lastname: newPatient.lastname,
+        firstname: firstNameValidation.value,
+        lastname: lastNameValidation.value,
         age: parseInt(newPatient.age),
         gender: newPatient.gender,
         dob: newPatient.dob,
@@ -108,9 +125,9 @@ export default function PatientSelector({
       setActiveTab("select");
 
       // Reset form
+      firstNameValidation.reset()
+      lastNameValidation.reset()
       setNewPatient({
-        firstname: "",
-        lastname: "",
         age: "",
         gender: "",
         dob: "",
@@ -257,31 +274,34 @@ export default function PatientSelector({
             <form onSubmit={handleCreatePatient} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">First Name *</Label>
+                  <Label htmlFor="firstname">First Name *</Label>
                   <Input
                     id="firstname"
-                    value={newPatient.firstname}
-                    onChange={(e) =>
-                      setNewPatient({
-                        ...newPatient,
-                        firstname: e.target.value,
-                      })
-                    }
-                    placeholder="John Doe"
+                    value={firstNameValidation.value}
+                    onChange={firstNameValidation.handleChange}
+                    onBlur={firstNameValidation.handleBlur}
+                    placeholder="John"
+                    className={firstNameValidation.displayError ? "border-red-500" : ""}
                     required
                   />
+                  {firstNameValidation.displayError && (
+                    <p className="text-sm text-red-500">{firstNameValidation.displayError}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastname">Last Name *</Label>
                   <Input
                     id="lastname"
-                    value={newPatient.lastname}
-                    onChange={(e) =>
-                      setNewPatient({ ...newPatient, lastname: e.target.value })
-                    }
+                    value={lastNameValidation.value}
+                    onChange={lastNameValidation.handleChange}
+                    onBlur={lastNameValidation.handleBlur}
                     placeholder="Doe"
+                    className={lastNameValidation.displayError ? "border-red-500" : ""}
                     required
                   />
+                  {lastNameValidation.displayError && (
+                    <p className="text-sm text-red-500">{lastNameValidation.displayError}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">

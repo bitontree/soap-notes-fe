@@ -11,10 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAuth } from "@/contexts/auth-context"
 import { Stethoscope, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useNameValidation } from "@/hooks/use-name-validation"
 
 export default function SignupPage() {
-  const [firstname, setFirstname] = useState("")
-  const [lastname, setLastname] = useState("")
+  const firstNameValidation = useNameValidation("", { fieldName: "First Name" })
+  const lastNameValidation = useNameValidation("", { fieldName: "Last Name" })
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -24,17 +25,30 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validate names
+    const isFirstNameValid = firstNameValidation.validate()
+    const isLastNameValid = lastNameValidation.validate()
+
+    if (!isFirstNameValid || !isLastNameValid) {
+      toast({
+        title: "Invalid Name",
+        description: "Please enter valid first and last names using only letters",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (password !== confirmPassword) {
       toast({
         title: "Password Mismatch",
-        description: "Passwords do not match",
+        description: "Password and confirm password does not match",
         variant: "destructive",
       })
       return
     }
 
     try {
-      await signup(firstname, lastname, email, password)
+      await signup(firstNameValidation.value, lastNameValidation.value, email, password)
     } catch (error) {
       toast({
         title: "Signup Failed",
@@ -65,10 +79,15 @@ export default function SignupPage() {
                   id="firstname"
                   type="text"
                   placeholder="John"
-                  value={firstname}
-                  onChange={(e) => setFirstname(e.target.value)}
+                  value={firstNameValidation.value}
+                  onChange={firstNameValidation.handleChange}
+                  onBlur={firstNameValidation.handleBlur}
+                  className={firstNameValidation.displayError ? "border-red-500" : ""}
                   required
                 />
+                {firstNameValidation.displayError && (
+                  <p className="text-sm text-red-500">{firstNameValidation.displayError}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastname">Last Name</Label>
@@ -76,10 +95,15 @@ export default function SignupPage() {
                   id="lastname"
                   type="text"
                   placeholder="Smith"
-                  value={lastname}
-                  onChange={(e) => setLastname(e.target.value)}
+                  value={lastNameValidation.value}
+                  onChange={lastNameValidation.handleChange}
+                  onBlur={lastNameValidation.handleBlur}
+                  className={lastNameValidation.displayError ? "border-red-500" : ""}
                   required
                 />
+                {lastNameValidation.displayError && (
+                  <p className="text-sm text-red-500">{lastNameValidation.displayError}</p>
+                )}
               </div>
             </div>
             <div className="space-y-2">

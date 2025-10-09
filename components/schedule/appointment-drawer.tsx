@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast"
 import { authApi, schedulesApi } from "@/lib/api"
 import { appointmentsApi } from "@/lib/api"
 import { parseISO, isValid, format, differenceInYears } from 'date-fns'
+import { useNameValidation } from "@/hooks/use-name-validation"
+import { validateName, sanitizeName } from "@/lib/utils"
 // Use country-list-with-dial-code-and-flag package (installed)
 import CountryList from 'country-list-with-dial-code-and-flag'
 
@@ -54,8 +56,11 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const [slotId, setSlotId] = React.useState<string | undefined>(undefined)
   const [slotTime, setSlotTime] = React.useState<string | undefined>(undefined)
   const [showAddPatientForm, setShowAddPatientForm] = React.useState(false)
-  const [newFirstname, setNewFirstname] = React.useState("")
-  const [newLastname, setNewLastname] = React.useState("")
+  
+  // Name validation hooks
+  const firstNameValidation = useNameValidation("", { fieldName: "First Name" })
+  const lastNameValidation = useNameValidation("", { fieldName: "Last Name" })
+  
   const [newDobIso, setNewDobIso] = React.useState("") // yyyy-MM-dd for API
   const [newPhone, setNewPhone] = React.useState("")
   const [newEmail, setNewEmail] = React.useState("")
@@ -68,15 +73,15 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   // Reset inline new-patient fields whenever the inline form is opened
   React.useEffect(() => {
     if (showAddPatientForm) {
-      setNewFirstname("")
-      setNewLastname("")
+      firstNameValidation.reset()
+      lastNameValidation.reset()
       setNewDobIso("")
       setNewPhone("")
       setNewEmail("")
       setNewPhoneCountry("+91")
       setNewGender("")
     }
-  }, [showAddPatientForm])
+  }, [showAddPatientForm]) // Removed the validation objects from dependencies
 
   // Derived validation state for enabling the Create button
   const phoneDigits = (newPhone || '').replace(/[^0-9]/g, '')
@@ -88,7 +93,9 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
     if (!m) return false
     try { const dt = parseISO(newDobIso); return isValid(dt) } catch { return false }
   })()
-  const canCreate = Boolean(newFirstname.trim() && newLastname.trim() && isPhoneValid && isEmailValid && isDobValid && newGender)
+  const canCreate = Boolean(firstNameValidation.isValid && firstNameValidation.value.trim() && 
+                           lastNameValidation.isValid && lastNameValidation.value.trim() && 
+                           isPhoneValid && isEmailValid && isDobValid && newGender)
 
   // Load patients when drawer opens and sync initial props into local state
   React.useEffect(() => {
@@ -161,10 +168,27 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const handleAddPatient = async () => {
     // legacy quick-add via search box
     const name = query.trim()
-  if (!name) { toast({ title: "Enter name", description: "Type a name to add", variant: "destructive", duration: 2000 }); return }
+    if (!name) { 
+      toast({ title: "Enter name", description: "Type a name to add", variant: "destructive", duration: 2000 })
+      return 
+    }
+    
+    // Validate the entire name input
+    const nameValidation = validateName(name, "Patient Name")
+    if (!nameValidation.isValid) {
+      toast({ 
+        title: "Invalid Name", 
+        description: nameValidation.error || "Please enter a valid name using only letters", 
+        variant: "destructive", 
+        duration: 2000 
+      })
+      return
+    }
+    
     const parts = name.split(/\s+/)
     const firstname = parts.slice(0, -1).join(" ") || parts[0]
     const lastname = parts.length > 1 ? parts[parts.length - 1] : ""
+    
     try {
       // quick-add has no DOB input; default age 0
       const created = await authApi.createPatient({ firstname, lastname, age: 0, gender: "Other", dob: new Date().toISOString().slice(0,10) } as any)
@@ -179,9 +203,22 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   }
 
   const handleCreatePatientInline = async () => {
-    const firstname = newFirstname.trim()
-    const lastname = newLastname.trim()
-  if (!firstname) { toast({ title: "Missing", description: "Enter first name", variant: "destructive", duration: 2000 }); return }
+    // Validate names
+    const isFirstNameValid = firstNameValidation.validate()
+    const isLastNameValid = lastNameValidation.validate()
+
+    if (!isFirstNameValid) {
+      toast({ title: "Invalid First Name", description: firstNameValidation.error || "Enter a valid first name", variant: "destructive", duration: 2000 })
+      return
+    }
+    
+    if (!isLastNameValid) {
+      toast({ title: "Invalid Last Name", description: lastNameValidation.error || "Enter a valid last name", variant: "destructive", duration: 2000 })
+      return
+    }
+
+    const firstname = firstNameValidation.value.trim()
+    const lastname = lastNameValidation.value.trim()
 
     // validate phone number length (number part only)
     if (newPhone && newPhone.trim() !== "") {
@@ -250,8 +287,8 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
       // hide inline form and clear query to hide list
       setShowAddPatientForm(false)
       setQuery("")
-      setNewFirstname("")
-      setNewLastname("")
+      firstNameValidation.reset()
+      lastNameValidation.reset()
       setNewDobIso("")
       setNewGender("Other")
       setNewPhone("")
@@ -304,8 +341,8 @@ const handleConfirm = () => {
       }
 
       const buildPatient = (src: any) => {
-        const firstname = (src?.firstname || newFirstname || "").trim();
-        const lastname = (src?.lastname || newLastname || "").trim();
+        const firstname = (src?.firstname || firstNameValidation.value || "").trim();
+        const lastname = (src?.lastname || lastNameValidation.value || "").trim();
           if (!firstname || !lastname) {
           toast({ title: "Missing", description: "Patient must have a first and last name", variant: "destructive", duration: 2000 });
           return null;
@@ -330,7 +367,7 @@ const handleConfirm = () => {
       };
 
       // Build inline patient from selected OR inline inputs — include even when selected.id exists
-      const patientInline = buildPatient(selected) || buildPatient({ firstname: newFirstname, lastname: newLastname, dob: newDobIso, gender: newGender }) || undefined;
+      const patientInline = buildPatient(selected) || buildPatient({ firstname: firstNameValidation.value, lastname: lastNameValidation.value, dob: newDobIso, gender: newGender }) || undefined;
 
       const payload: any = {
         slot_id: slotId,
@@ -423,7 +460,17 @@ const handleConfirm = () => {
               <div>
                 <Label>Patient</Label>
                 <div className="flex gap-2 relative">
-                  <Input ref={searchRef} placeholder="Search Name..." value={selected ? `${selected.firstname} ${selected.lastname}` : query} onChange={e => { setQuery(e.target.value); setSelected(null) }} />
+                  <Input 
+                    ref={searchRef} 
+                    placeholder="Search Name..." 
+                    value={selected ? `${selected.firstname} ${selected.lastname}` : query} 
+                    onChange={e => { 
+                      // Sanitize the search input for names
+                      const sanitizedValue = sanitizeName(e.target.value)
+                      setQuery(sanitizedValue)
+                      setSelected(null) 
+                    }} 
+                  />
                   <div className="flex items-center gap-2">
                     {/* Primary Add button now opens the inline Quick Add form */}
                     <Button variant="outline" size="sm" onClick={() => setShowAddPatientForm(true)}><UserPlus className="h-4 w-4 mr-2"/>Add</Button>
@@ -440,9 +487,25 @@ const handleConfirm = () => {
                         </div>
                         <div className="mt-3 space-y-3">
                           <Label>First name</Label>
-                          <Input value={newFirstname} onChange={e => setNewFirstname(e.target.value)} />
+                          <Input 
+                            value={firstNameValidation.value} 
+                            onChange={firstNameValidation.handleChange}
+                            onBlur={firstNameValidation.handleBlur}
+                            className={firstNameValidation.displayError ? "border-red-500" : ""}
+                          />
+                          {firstNameValidation.displayError && (
+                            <p className="text-sm text-red-500">{firstNameValidation.displayError}</p>
+                          )}
                           <Label>Last name</Label>
-                          <Input value={newLastname} onChange={e => setNewLastname(e.target.value)} />
+                          <Input 
+                            value={lastNameValidation.value} 
+                            onChange={lastNameValidation.handleChange}
+                            onBlur={lastNameValidation.handleBlur}
+                            className={lastNameValidation.displayError ? "border-red-500" : ""}
+                          />
+                          {lastNameValidation.displayError && (
+                            <p className="text-sm text-red-500">{lastNameValidation.displayError}</p>
+                          )}
                           <Label>Phone</Label>
                           <div className="flex items-center gap-2">
                             <Select value={newPhoneCountry} onValueChange={(v: string) => setNewPhoneCountry(v)}>

@@ -8,9 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Eye, Download, MoreHorizontal, Loader2, Edit } from "lucide-react"
+import { Eye, Download, MoreHorizontal, Loader2, Edit, Search } from "lucide-react"
 import { authApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
+import { validateName } from "@/lib/utils"
+import { useNameSearch } from "@/hooks/use-name-search"
 
 interface Patient {
   id: string
@@ -33,6 +35,13 @@ export default function ManagePatientsPage() {
   const [editForm, setEditForm] = useState<Partial<Patient>>({})
   const [isUpdating, setIsUpdating] = useState(false)
   const { toast } = useToast()
+
+  // Name search functionality
+  const searchQuery = useNameSearch("", { 
+    fieldName: "Patient Search", 
+    autoSanitize: true, 
+    validateOnChange: false 
+  })
 
   async function loadPatients() {
     setIsLoading(true)
@@ -74,6 +83,17 @@ export default function ManagePatientsPage() {
     }
   }
 
+  // Filter patients based on search query
+  const filteredPatients = patients.filter(patient => {
+    if (!searchQuery.value.trim()) return true
+    
+    const searchTerm = searchQuery.value.toLowerCase()
+    const fullName = `${patient.firstname || ''} ${patient.lastname || ''}`.toLowerCase()
+    const email = (patient.email || '').toLowerCase()
+    
+    return fullName.includes(searchTerm) || email.includes(searchTerm)
+  })
+
   return (
     <div>
       <Header title="Manage Patients" description="View and manage patients" />
@@ -81,6 +101,26 @@ export default function ManagePatientsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Patients</CardTitle>
+            <div className="flex items-center gap-4 mt-4">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search patients by name or email..."
+                  value={searchQuery.value}
+                  onChange={searchQuery.handleChange}
+                  onBlur={searchQuery.handleBlur}
+                  className={`pl-10 ${searchQuery.displayError ? "border-red-500" : ""}`}
+                />
+                {searchQuery.displayError && (
+                  <p className="text-sm text-red-500 mt-1">{searchQuery.displayError}</p>
+                )}
+              </div>
+              {filteredPatients.length !== patients.length && (
+                <p className="text-sm text-gray-500">
+                  Showing {filteredPatients.length} of {patients.length} patients
+                </p>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -88,10 +128,15 @@ export default function ManagePatientsPage() {
             ) : (
               // limit list height and make it scrollable so the whole page doesn't grow indefinitely
               <div className="space-y-4 max-h-[60vh] overflow-auto pr-2">
-                {patients.length === 0 && (
+                {filteredPatients.length === 0 && patients.length === 0 && (
                   <div className="text-sm text-gray-500">No patients found.</div>
                 )}
-                {patients.map(p => (
+                {filteredPatients.length === 0 && patients.length > 0 && (
+                  <div className="text-sm text-gray-500">
+                    No patients match your search. Try adjusting your search terms.
+                  </div>
+                )}
+                {filteredPatients.map(p => (
                   <Card key={p.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4 flex items-center justify-between">
                       <div>
@@ -174,6 +219,31 @@ function ManagePatientDialogs({
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedPatient) return
+    
+    // Validate names if they are being changed
+    if (editForm.firstname !== undefined && editForm.firstname !== selectedPatient.firstname) {
+      const firstNameValidation = validateName(editForm.firstname, "First Name")
+      if (!firstNameValidation.isValid) {
+        toast({
+          title: "Invalid First Name",
+          description: firstNameValidation.error,
+          variant: "destructive",
+        })
+        return
+      }
+    }
+    
+    if (editForm.lastname !== undefined && editForm.lastname !== selectedPatient.lastname) {
+      const lastNameValidation = validateName(editForm.lastname, "Last Name")
+      if (!lastNameValidation.isValid) {
+        toast({
+          title: "Invalid Last Name", 
+          description: lastNameValidation.error,
+          variant: "destructive",
+        })
+        return
+      }
+    }
     
     // Only send fields that have actually changed
     const changedFields: Partial<Patient> = {}
