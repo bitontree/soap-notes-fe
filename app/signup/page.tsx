@@ -106,6 +106,16 @@ export default function SignupPage() {
       }
     }
 
+    // Password validation
+    if (password.length < 6) {
+      toast({
+        title: "Password Too Short",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (password !== confirmPassword) {
       toast({
         title: "Password Mismatch",
@@ -118,11 +128,28 @@ export default function SignupPage() {
     try {
       await signup(firstNameValidation.value, lastNameValidation.value, emailValidation.value, password)
     } catch (error) {
-      toast({
-        title: "Signup Failed",
-        description: "Mail already exists",
-        variant: "destructive",
-      })
+      const errorMessage = error instanceof Error ? error.message : "Signup failed"
+      
+      // Determine the appropriate toast message based on the error
+      if (errorMessage.toLowerCase().includes("email") || errorMessage.toLowerCase().includes("mail")) {
+        toast({
+          title: "Email Already Exists",
+          description: "An account with this email already exists. Please use a different email or try logging in.",
+          variant: "destructive",
+        })
+      } else if (errorMessage.toLowerCase().includes("password")) {
+        toast({
+          title: "Password Error",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Signup Failed",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      }
     }
   }
 
@@ -205,7 +232,7 @@ export default function SignupPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
-                  className="pr-10"
+                  className={`pr-10 ${password.length > 0 && password.length < 6 ? "border-red-500" : ""}`}
                   required
                 />
                 <button
@@ -220,6 +247,12 @@ export default function SignupPage() {
                   )}
                 </button>
               </div>
+              {password.length > 0 && password.length < 6 && (
+                <p className="text-sm text-red-500">Password must be at least 6 characters long</p>
+              )}
+              {password.length === 0 && (
+                <p className="text-sm text-gray-500">Password must be at least 6 characters long</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password</Label>
@@ -231,7 +264,7 @@ export default function SignupPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   autoComplete="new-password"
-                  className="pr-10"
+                  className={`pr-10 ${confirmPassword.length > 0 && password !== confirmPassword ? "border-red-500" : ""}`}
                   required
                 />
                 <button
@@ -246,6 +279,9 @@ export default function SignupPage() {
                   )}
                 </button>
               </div>
+              {confirmPassword.length > 0 && password !== confirmPassword && (
+                <p className="text-sm text-red-500">Passwords do not match</p>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
