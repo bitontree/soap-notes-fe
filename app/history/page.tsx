@@ -328,6 +328,9 @@ export default function HistoryPage() {
                       <h3 className="text-lg font-semibold text-gray-900">
                         {note.patient_name || 'Unknown Patient'}
                       </h3>
+                      {/* Status and type badges are hidden in the UI for now. Keep the components here commented
+                          so they can be re-enabled easily in the future. */}
+                      {/*
                       <Badge variant="default" className="text-xs">
                         completed
                       </Badge>
@@ -338,6 +341,7 @@ export default function HistoryPage() {
                          note.soap_data.assessment?.toLowerCase().includes('urgent') ? 'Urgent Care' :
                          'Follow-up'}
                       </Badge>
+                      */}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">

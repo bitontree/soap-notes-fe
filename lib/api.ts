@@ -398,6 +398,34 @@ export const authApi = {
       throw new Error(response.message || "Failed to create patient");
     return response.data!;
   },
+
+  async deletePatient(patientId: string): Promise<void> {
+    const response = await apiRequest(`/patients/${patientId}`, {
+      method: "DELETE",
+      headers: {
+        ...getAuthHeaders(),
+        ...getApiKeyAuthHeaders(),
+      },
+    });
+    if (!response.success) {
+      throw new Error(response.message || "Failed to delete patient");
+    }
+  },
+
+  async updatePatient(patientId: string, patientData: Partial<Patient>): Promise<Patient> {
+    const response = await apiRequest<Patient>(`/patients/${patientId}`, {
+      method: "PUT",
+      data: patientData,
+      headers: {
+        ...getAuthHeaders(),
+        ...getApiKeyAuthHeaders(),
+      },
+    });
+    if (!response.success) {
+      throw new Error(response.message || "Failed to update patient");
+    }
+    return response.data!;
+  },
 };
 
 // ---------- Health Report Upload API ----------

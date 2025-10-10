@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Database, Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
+import { sanitizeName } from "@/lib/utils"
 
 export default function EHRPage() {
   const [isGenerating, setIsGenerating] = useState(false)
@@ -33,9 +34,15 @@ export default function EHRPage() {
   const { toast } = useToast()
 
   const handleInputChange = (field: string, value: string) => {
+    // Sanitize name fields
+    let sanitizedValue = value
+    if (field === "name") {
+      sanitizedValue = sanitizeName(value)
+    }
+    
     setPatientData((prev) => ({
       ...prev,
-      [field]: value,
+      [field]: sanitizedValue,
     }))
   }
 
