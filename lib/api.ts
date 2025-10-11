@@ -662,10 +662,10 @@ export const soapApi = {
       throw new Error("Invalid response from server: missing result");
     } catch (error: any) {
       console.error("Error in generateSoapNote:", error);
+      // Prefer explicit `detail` field from backend (some backends use `detail` instead of `message`)
+      const backendMessage = error?.response?.data?.detail || error?.response?.data?.message;
       throw new Error(
-        error.response?.data?.message ||
-          error.message ||
-          "Failed to generate SOAP note"
+        backendMessage || error.message || "Failed to generate SOAP note"
       );
     }
   },

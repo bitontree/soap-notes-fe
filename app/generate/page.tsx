@@ -212,12 +212,18 @@ export default function GeneratePage() {
       cleanupLocalFiles()
     } catch (error: any) {
       setIsProcessing(false)
+
+      const backendMsg = error?.message || ""
+      const userMessage = backendMsg.includes("Raw transcript is empty")
+        ? "Invalid audio file."
+        : backendMsg || "Failed to generate SOAP note. Please try again."
+
       toast({
         title: "Error",
-        description: error.message || "Failed to generate SOAP note. Please try again.",
+        description: userMessage,
         variant: "destructive",
       })
-      
+
       // Clean up local files even on error
       cleanupLocalFiles()
     }
