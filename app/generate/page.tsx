@@ -144,9 +144,7 @@ export default function GeneratePage() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "audio/*": [".mp3", ".wav", ".m4a", ".ogg", ".mp4"],
-      "audio/mp4": [".mp4", ".m4a"],
-      "video/mp4": [".mp4"], // some browsers tag audio-only MP4 as video/mp4
+      "audio/*": [".mp3", ".wav", ".m4a"],
     },
     maxFiles: 1,
   })
@@ -225,12 +223,19 @@ export default function GeneratePage() {
     }
   }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast({
-      title: "Copied to clipboard",
-      description: "Text has been copied to your clipboard",
-    })
+  const copyToClipboard = (textOrObj: string | object) => {
+    try {
+      let out = typeof textOrObj === "string" ? textOrObj : JSON.stringify(textOrObj, null, 2)
+      // Replace escaped sequences so multiline fields (transcript/diarized_transcript) paste with real newlines
+      out = out.replace(/\\r\\n/g, "\r\n").replace(/\\n/g, "\n").replace(/\\t/g, "\t")
+      navigator.clipboard.writeText(out)
+      toast({
+        title: "Copied to clipboard",
+        description: "Text has been copied to your clipboard",
+      })
+    } catch (e) {
+      toast({ title: "Copy failed", description: "Failed to copy text to clipboard", variant: "destructive" })
+    }
   }
 
   const exportToPDF = async () => {
