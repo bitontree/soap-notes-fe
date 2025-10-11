@@ -24,6 +24,7 @@ import { User, Plus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { authApi } from "@/lib/api";
 import { useNameValidation } from "@/hooks/use-name-validation";
+import { useEmailValidation } from "@/hooks/use-email-validation";
 
 interface Patient {
   id: string;
@@ -62,10 +63,12 @@ export default function PatientSelector({
     age: "",
     gender: "",
     dob: "",
-    email: "",
     phone: "",
     address: "",
   });
+
+  // Email validation hook (sanitizes on change)
+  const emailValidation = useEmailValidation("")
 
   useEffect(() => {
     loadPatients();
@@ -120,7 +123,7 @@ export default function PatientSelector({
         age: parseInt(newPatient.age),
         gender: newPatient.gender,
         dob: newPatient.dob,
-        email: newPatient.email || undefined,
+        email: emailValidation.value || undefined,
         phone: newPatient.phone || undefined,
         address: newPatient.address || undefined,
       };
@@ -134,11 +137,11 @@ export default function PatientSelector({
       // Reset form
       firstNameValidation.reset()
       lastNameValidation.reset()
+      emailValidation.reset()
       setNewPatient({
         age: "",
         gender: "",
         dob: "",
-        email: "",
         phone: "",
         address: "",
       });
@@ -364,12 +367,15 @@ export default function PatientSelector({
                   <Input
                     id="email"
                     type="email"
-                    value={newPatient.email}
-                    onChange={(e) =>
-                      setNewPatient({ ...newPatient, email: e.target.value })
-                    }
+                    value={emailValidation.value}
+                    onChange={emailValidation.handleChange}
+                    onBlur={emailValidation.validate}
                     placeholder="john@example.com"
+                    className={emailValidation.error ? "border-red-500" : ""}
                   />
+                  {emailValidation.error && (
+                    <p className="text-sm text-red-500">{emailValidation.error}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -415,7 +421,10 @@ export default function PatientSelector({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setActiveTab("select")}
+                  onClick={() => {
+                    emailValidation.reset()
+                    setActiveTab("select")
+                  }}
                 >
                   Cancel
                 </Button>

@@ -191,7 +191,13 @@ export default function BiomarkersPage() {
     setIsLoading(true)
     try {
       const patientId = patient.id
-      const res = await fetchReports({ page: 1, limit: 100, patient_id: patientId })
+
+      // Build params including optional date range filters (backend expects yyyy-MM-dd)
+      const params: any = { page: 1, limit: 100, patient_id: patientId }
+      if (dateRange.from) params.test_date_from = format(dateRange.from, "yyyy-MM-dd")
+      if (dateRange.to) params.test_date_to = format(dateRange.to, "yyyy-MM-dd")
+
+      const res = await fetchReports(params)
       setReports((res.reports as any) || [])
     } catch (e: any) {
       toast({ title: "Failed to load reports", description: e?.message || "Please try again later", variant: "destructive" })
@@ -204,6 +210,14 @@ export default function BiomarkersPage() {
   useEffect(() => {
     loadReports(selectedPatient)
   }, [selectedPatient])
+
+  // Reload reports when date range changes for the currently selected patient
+  useEffect(() => {
+    // only load when a patient is selected
+    if (!selectedPatient) return
+    loadReports(selectedPatient)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange.from, dateRange.to])
 
   // Robust date normalization: tries many formats; only falls back to created_at if test_date missing
   const normalizeTestDate = (dateStr?: string, createdAtIso?: string): string | undefined => {
