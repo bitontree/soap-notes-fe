@@ -169,7 +169,7 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" data-form-type="signup">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstname">First Name</Label>
+                <Label htmlFor="firstname">First Name <span className="text-red-500">*</span></Label>
                 <Input
                   id="firstname"
                   name="firstname"
@@ -187,7 +187,7 @@ export default function SignupPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastname">Last Name</Label>
+                <Label htmlFor="lastname">Last Name <span className="text-red-500">*</span></Label>
                 <Input
                   id="lastname"
                   name="lastname"
@@ -206,7 +206,7 @@ export default function SignupPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
               <Input
                 id="email"
                 name="signup-email"
@@ -223,7 +223,7 @@ export default function SignupPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -255,7 +255,7 @@ export default function SignupPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Label htmlFor="confirmPassword">Confirm Password <span className="text-red-500">*</span></Label>
               <div className="relative">
                 <Input
                   id="confirmPassword"

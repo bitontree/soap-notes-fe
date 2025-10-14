@@ -11,14 +11,15 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select"
-import { UserPlus, X, Calendar } from "lucide-react"
+import { UserPlus, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { authApi, schedulesApi } from "@/lib/api"
 import { appointmentsApi } from "@/lib/api"
-import { parseISO, isValid, format, differenceInYears } from 'date-fns'
+import { parseISO, isValid, format, differenceInYears, isBefore, startOfToday, subDays } from 'date-fns'
 import { useNameValidation } from "@/hooks/use-name-validation"
 import { useEmailValidation } from "@/hooks/use-email-validation"
 import { validateName, sanitizeName } from "@/lib/utils"
+import { DatePicker } from "@/components/ui/date-picker"
 // Use country-list-with-dial-code-and-flag package (installed)
 import CountryList from 'country-list-with-dial-code-and-flag'
 
@@ -90,12 +91,19 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const phoneDigits = (newPhone || '').replace(/[^0-9]/g, '')
   const isPhoneValid = phoneDigits.length >= 5 && phoneDigits.length <= 11
   const isEmailValid = emailValidation.value && emailValidation.isValid
-  const isDobValid = (() => {
+  const today = React.useMemo(() => startOfToday(), [])
+  const dobMaxDate = React.useMemo(() => subDays(today, 1), [today])
+  const dobMinDate = React.useMemo(() => new Date(1900, 0, 1), [])
+
+  const isDobValid = React.useMemo(() => {
     if (!newDobIso) return false
-    const m = newDobIso.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-    if (!m) return false
-    try { const dt = parseISO(newDobIso); return isValid(dt) } catch { return false }
-  })()
+    try {
+      const dt = parseISO(newDobIso)
+      return isValid(dt) && isBefore(dt, today) && !isBefore(dt, dobMinDate)
+    } catch {
+      return false
+    }
+  }, [newDobIso, today, dobMinDate])
   const canCreate = Boolean(firstNameValidation.isValid && firstNameValidation.value.trim() && 
                            lastNameValidation.isValid && lastNameValidation.value.trim() && 
                            isPhoneValid && isEmailValid && isDobValid && newGender)
@@ -220,25 +228,21 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
       }
     }
 
-    // validate/normalize DOB and ensure year is 4 digits when provided
-    let dobToSend: string | undefined = undefined
-  if (newDobIso && newDobIso.trim() !== "") {
-      // require a 4-digit year somewhere in the input
-      const yearMatch = newDobIso.match(/(\d{4})/)
-      if (!yearMatch) {
-        toast({ title: "Invalid DOB", description: "Year must be 4 digits (yyyy)", variant: "destructive", duration: 2000 })
-        return
+    // validate/normalize DOB and ensure it's before today
+    if (!newDobIso) {
+      toast({ title: "Invalid DOB", description: "Select a date of birth", variant: "destructive", duration: 2000 })
+      return
+    }
+    let dobToSend: string
+    try {
+      const dt = parseISO(newDobIso)
+      if (!isValid(dt) || !isBefore(dt, today) || isBefore(dt, dobMinDate)) {
+        throw new Error('invalid')
       }
-      try {
-        const dt = parseISO(newDobIso)
-        if (!isValid(dt)) { throw new Error('invalid') }
-        dobToSend = format(dt, 'yyyy-MM-dd')
-      } catch (e) {
-        toast({ title: "Invalid DOB", description: "Enter a valid date", variant: "destructive", duration: 2000 })
-        return
-      }
-    } else {
-      dobToSend = new Date().toISOString().slice(0,10)
+      dobToSend = format(dt, 'yyyy-MM-dd')
+    } catch (e) {
+      toast({ title: "Invalid DOB", description: "Date of birth must be between Jan 1, 1900 and yesterday", variant: "destructive", duration: 2000 })
+      return
     }
 
     if (creatingPatient) return
@@ -289,7 +293,7 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
 const handleConfirm = () => {
   (async () => {
     if (!selected || !date || !location || !slotId) {
-      toast({ title: "Missing", description: "Select patient, date, location and slot", variant: "destructive", duration: 2000 });
+      toast({ title: "Missing", description: "Select patient", variant: "destructive", duration: 2000 });
       return;
     }
     if (booking) return;
@@ -334,7 +338,7 @@ const handleConfirm = () => {
         let dobIso = dobRaw;
         try {
           const dt = parseISO(dobRaw);
-          if (!isValid(dt)) throw new Error("invalid");
+          if (!isValid(dt) || !isBefore(dt, today) || isBefore(dt, dobMinDate)) throw new Error("invalid");
           dobIso = format(dt, "yyyy-MM-dd");
         } catch (err) {
           toast({ title: "Invalid DOB", description: "Enter a valid date for patient DOB", variant: "destructive", duration: 2000 });
@@ -517,54 +521,13 @@ const handleConfirm = () => {
                             <p className="text-sm text-red-500">{emailValidation.error}</p>
                           )}
                           <Label>DOB</Label>
-                          <div className="relative">
-                            <Input
-                              type="text"
-                              inputMode="numeric"
-                              placeholder="yyyy-mm-dd"
-                              value={newDobIso}
-                              className="pr-10"
-                              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                                // allow control keys and digits; block letters
-                                const allowed = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End']
-                                if (allowed.includes(e.key)) return
-                                // allow hyphen as well
-                                if (e.key === '-') return
-                                // allow digits
-                                if (/^[0-9]$/.test(e.key)) return
-                                e.preventDefault()
-                              }}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                // Accept only digits, build yyyy-mm-dd progressively
-                                const raw = (e.target.value || '').replace(/[^0-9]/g, '')
-                                const y = raw.slice(0,4)
-                                const m = raw.slice(4,6)
-                                const d = raw.slice(6,8)
-                                let out = y
-                                if (m.length) out += '-' + m
-                                if (d.length) out += '-' + d
-                                setNewDobIso(out)
-                              }}
-                              onBlur={() => {
-                                if (!newDobIso) return
-                                // require 4-digit year
-                                const match = newDobIso.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-                                if (!match) {
-                                  toast({ title: 'Invalid DOB', description: 'Enter date as yyyy-mm-dd', variant: 'destructive' })
-                                  return
-                                }
-                                try {
-                                  const dt = parseISO(newDobIso)
-                                  if (!isValid(dt)) throw new Error('invalid')
-                                  // normalize
-                                  setNewDobIso(format(dt, 'yyyy-MM-dd'))
-                                } catch (err) {
-                                  toast({ title: 'Invalid DOB', description: 'Enter a valid date', variant: 'destructive' })
-                                }
-                              }}
-                            />
-                            <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                          </div>
+                          <DatePicker
+                            value={newDobIso || null}
+                            onChange={(value) => setNewDobIso(value ?? "")}
+                            maxDate={dobMaxDate}
+                            minDate={dobMinDate}
+                            placeholder="Select date"
+                          />
                           <Label>Gender</Label>
                           <Select value={newGender} onValueChange={v => setNewGender(v)}>
                             <SelectTrigger>

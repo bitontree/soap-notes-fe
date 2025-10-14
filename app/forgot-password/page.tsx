@@ -9,20 +9,39 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Stethoscope, Loader2, ArrowLeft, CheckCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useEmailValidation } from "@/hooks/use-email-validation"
 import { authApi } from "@/lib/api"
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState("")
+  const emailValidation = useEmailValidation("")
   const [isLoading, setIsLoading] = useState(false)
   const [isEmailSent, setIsEmailSent] = useState(false)
   const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Smart validation: Only check for business rules that sanitization can't fix
+    const isEmailValid = emailValidation.validate()
+    
+    if (!isEmailValid) {
+      const emailError = emailValidation.error
+      // Only show toast for business rule violations (empty, incomplete structure)
+      if (emailError?.includes('required') || emailError?.includes('must contain') || 
+          emailError?.includes('must have')) {
+        toast({
+          title: "Email Required",
+          description: "Please enter a complete email address",
+          variant: "destructive",
+        })
+        return
+      }
+    }
+    
     setIsLoading(true)
 
     try {
-      await authApi.forgotPassword(email)
+      await authApi.forgotPassword(emailValidation.value)
       
       setIsEmailSent(true)
       toast({
@@ -53,7 +72,7 @@ export default function ForgotPasswordPage() {
             </div>
             <CardTitle className="text-2xl font-bold text-gray-900">Check Your Email</CardTitle>
             <CardDescription>
-              We've sent a password reset link to {email}
+              We've sent a password reset link to {emailValidation.value}
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center">
@@ -72,7 +91,7 @@ export default function ForgotPasswordPage() {
                 className="w-full"
                 onClick={() => {
                   setIsEmailSent(false)
-                  setEmail("")
+                  emailValidation.reset()
                 }}
               >
                 Send Another Email
@@ -101,15 +120,19 @@ export default function ForgotPasswordPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="doctor@hospital.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={emailValidation.value}
+                onChange={emailValidation.handleChange}
+                className={emailValidation.error ? "border-red-500" : ""}
                 required
               />
+              {emailValidation.error && (
+                <p className="text-sm text-red-500">{emailValidation.error}</p>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (

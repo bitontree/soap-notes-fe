@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { subDays, startOfToday, parseISO, isBefore, isValid } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { authApi } from "@/lib/api";
 import { useNameValidation } from "@/hooks/use-name-validation";
 import { useEmailValidation } from "@/hooks/use-email-validation";
+import { DatePicker } from "@/components/ui/date-picker";
 
 interface Patient {
   id: string;
@@ -70,6 +72,9 @@ export default function PatientSelector({
   // Email validation hook (sanitizes on change)
   const emailValidation = useEmailValidation("")
 
+  const latestDob = useMemo(() => subDays(startOfToday(), 1), [])
+  const earliestDob = useMemo(() => new Date(1900, 0, 1), [])
+
   useEffect(() => {
     loadPatients();
   }, []);
@@ -112,6 +117,34 @@ export default function PatientSelector({
         })
         return
       }
+    }
+
+    if (!newPatient.dob) {
+      toast({
+        title: "DOB Required",
+        description: "Please select a valid date of birth",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const dobDate = parseISO(newPatient.dob)
+    if (!isValid(dobDate) || !isBefore(dobDate, startOfToday())) {
+      toast({
+        title: "Invalid DOB",
+        description: "Date of birth must be before today",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (isBefore(dobDate, earliestDob)) {
+      toast({
+        title: "Invalid DOB",
+        description: "Date of birth must be after Jan 1, 1900",
+        variant: "destructive",
+      })
+      return
     }
     
     setIsCreating(true);
@@ -208,7 +241,7 @@ export default function PatientSelector({
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="patient">Select Patient *</Label>
+                  <Label htmlFor="patient">Select Patient <span className="text-red-500">*</span></Label>
                   <Select
                     value={selectedPatient?.id || ""}
                     onValueChange={(value) => {
@@ -284,7 +317,7 @@ export default function PatientSelector({
             <form onSubmit={handleCreatePatient} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="firstname">First Name *</Label>
+                  <Label htmlFor="firstname">First Name <span className="text-red-500">*</span></Label>
                   <Input
                     id="firstname"
                     value={firstNameValidation.value}
@@ -299,7 +332,7 @@ export default function PatientSelector({
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastname">Last Name *</Label>
+                  <Label htmlFor="lastname">Last Name <span className="text-red-500">*</span></Label>
                   <Input
                     id="lastname"
                     value={lastNameValidation.value}
@@ -315,7 +348,7 @@ export default function PatientSelector({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="age">Age *</Label>
+                  <Label htmlFor="age">Age <span className="text-red-500">*</span></Label>
                   <Input
                     id="age"
                     type="number"
@@ -331,7 +364,7 @@ export default function PatientSelector({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="gender">Gender *</Label>
+                  <Label htmlFor="gender">Gender <span className="text-red-500">*</span></Label>
                   <Select
                     value={newPatient.gender}
                     onValueChange={(value) =>
@@ -350,15 +383,16 @@ export default function PatientSelector({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="dob">Date of Birth *</Label>
-                  <Input
+                  <Label htmlFor="dob">Date of Birth <span className="text-red-500">*</span></Label>
+                  <DatePicker
                     id="dob"
-                    type="date"
-                    value={newPatient.dob}
-                    onChange={(e) =>
-                      setNewPatient({ ...newPatient, dob: e.target.value })
+                    value={newPatient.dob || null}
+                    onChange={(value) =>
+                      setNewPatient({ ...newPatient, dob: value ?? "" })
                     }
-                    required
+                    maxDate={latestDob}
+                    minDate={earliestDob}
+                    placeholder="Select date"
                   />
                 </div>
 
