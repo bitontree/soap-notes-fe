@@ -78,7 +78,7 @@ export default function SchedulesPage() {
   // Schedule editing form values
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
-  const [startTime, setStartTime] = useState<string>("07:00")
+  const [startTime, setStartTime] = useState<string>("00:00")
   const [endTime, setEndTime] = useState<string>("07:30")
   const [slotDuration, setSlotDuration] = useState<number>(30)
   const [patientsPerSlot, setPatientsPerSlot] = useState<number>(1)
@@ -1389,7 +1389,7 @@ export default function SchedulesPage() {
         recurring_interval_weeks: recurringIntervalWeeks,
       }
       const res = await schedulesApi.create(payload)
-      const created = (res as any)?.schedule as Schedule | undefined
+      const created = (res as any)?.schedule as Schedule | undefined  
       const genSlots = (res as any)?.slots as Slot[] | undefined
 
       if (created) {
@@ -1601,8 +1601,9 @@ export default function SchedulesPage() {
             buttonText={{ today: 'Today', month: 'Month', week: 'Week', day: 'Day' }}
             allDayText={'all-day'}
             height="auto"
-            slotMinTime="07:00:00"
-            scrollTime="07:00:00"
+            slotMinTime="00:00:00"
+            slotMaxTime="24:00:00"
+            scrollTime="00:00:00"
               events={events}
               eventOrder="order"
               eventContent={(arg: any) => {

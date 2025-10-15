@@ -608,9 +608,11 @@ export const soapApi = {
       ...getAuthHeaders(),
       ...getApiKeyAuthHeaders(),
     };
-    const response = await apiRequest(`/soap/notes/${noteId}`, {
+    // Some environments/proxies may not forward DELETE params reliably.
+    // Put user_id explicitly in the query string so the backend receives it.
+    const endpoint = `/soap/notes/${noteId}?user_id=${encodeURIComponent(userId)}`;
+    const response = await apiRequest(endpoint, {
       method: "DELETE",
-      params: { user_id: userId },
       headers,
     });
     if (!response.success)
