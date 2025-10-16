@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { soapApi } from "@/lib/api"
+import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 import PatientSelector from "@/components/patient-selector" 
 import { useAuth } from "@/contexts/auth-context"
 import { ProtectedRoute } from "@/components/protected-route"
@@ -116,7 +117,19 @@ export default function GeneratePage() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    (acceptedFiles: File[], fileRejections: any[]) => {
+      // Handle rejections explicitly so users get feedback when they pick unsupported files
+      if (fileRejections && fileRejections.length > 0) {
+        const rej = fileRejections[0]
+        const reasons = (rej.errors || []).map((e: any) => e.message).join("; ") || "Unsupported file type"
+        toast({
+          title: "Invalid file",
+          description: `${rej.file?.name || 'File'} rejected: ${reasons}`,
+          variant: "destructive",
+        })
+        return
+      }
+
       const audioFile = acceptedFiles[0]
       if (audioFile) {
         setFile(audioFile)
@@ -131,9 +144,7 @@ export default function GeneratePage() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "audio/*": [".mp3", ".wav", ".m4a", ".ogg", ".mp4"],
-      "audio/mp4": [".mp4", ".m4a"],
-      "video/mp4": [".mp4"], // some browsers tag audio-only MP4 as video/mp4
+      "audio/*": [".mp3", ".wav", ".m4a"],
     },
     maxFiles: 1,
   })
@@ -201,30 +212,73 @@ export default function GeneratePage() {
       cleanupLocalFiles()
     } catch (error: any) {
       setIsProcessing(false)
+
+      const backendMsg = error?.message || ""
+      const userMessage = backendMsg.includes("Raw transcript is empty")
+        ? "Invalid audio file."
+        : backendMsg || "Failed to generate SOAP note. Please try again."
+
       toast({
         title: "Error",
-        description: error.message || "Failed to generate SOAP note. Please try again.",
+        description: userMessage,
         variant: "destructive",
       })
-      
+
       // Clean up local files even on error
       cleanupLocalFiles()
     }
   }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast({
-      title: "Copied to clipboard",
-      description: "Text has been copied to your clipboard",
-    })
+  const copyToClipboard = (textOrObj: string | object) => {
+    try {
+      let out = typeof textOrObj === "string" ? textOrObj : JSON.stringify(textOrObj, null, 2)
+      // Replace escaped sequences so multiline fields (transcript/diarized_transcript) paste with real newlines
+      out = out.replace(/\\r\\n/g, "\r\n").replace(/\\n/g, "\n").replace(/\\t/g, "\t")
+      navigator.clipboard.writeText(out)
+      toast({
+        title: "Copied to clipboard",
+        description: "Text has been copied to your clipboard",
+      })
+    } catch (e) {
+      toast({ title: "Copy failed", description: "Failed to copy text to clipboard", variant: "destructive" })
+    }
   }
 
-  const exportToPDF = () => {
-    toast({
-      title: "Export Started",
-      description: "PDF export will begin shortly",
-    })
+  const exportToPDF = async () => {
+    if (!soapNote) {
+      toast({ title: "No SOAP Note", description: "Nothing to export", variant: "destructive" })
+      return
+    }
+
+    toast({ title: "Export Started", description: "PDF export will begin shortly" })
+
+    try {
+      const filename = `soap-note-${selectedPatient?.firstname || 'patient'}-${new Date().toISOString().split('T')[0]}.pdf`
+
+      // The PDF exporter expects a note object with `soap_data` and `created_at`.
+      const noteForExport = {
+        id: Date.now().toString(),
+        patient_name: selectedPatient ? `${selectedPatient.firstname} ${selectedPatient.lastname}` : "Unknown",
+        created_at: new Date().toISOString(),
+        soap_data: {
+          subjective: soapNote.subjective,
+          objective: soapNote.objective,
+          assessment: soapNote.assessment,
+          plan: soapNote.plan,
+        },
+        summary: soapNote.summary || "",
+      }
+
+      await exportSOAPNoteToPDF(noteForExport as any, { filename, orientation: 'portrait', format: 'a4', margin: 20 })
+
+      // Delay success message slightly so the download can start before the toast appears
+      setTimeout(() => {
+        toast({ title: "Success", description: "PDF exported successfully" })
+      }, 1000)
+    } catch (error: any) {
+      console.error('Failed to export PDF:', error)
+      toast({ title: "Export Failed", description: error?.message || "Failed to export PDF. Please try again.", variant: "destructive" })
+    }
   }
 
   // Audio recording functions

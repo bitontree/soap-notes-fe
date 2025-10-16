@@ -10,7 +10,7 @@ const apiClient = axios.create({
     "Content-Type": "application/json",
   },
   withCredentials: true,
-  timeout: 10000,
+  timeout: 10000000,
 });
 
 // ---------- Interfaces ----------
@@ -608,9 +608,11 @@ export const soapApi = {
       ...getAuthHeaders(),
       ...getApiKeyAuthHeaders(),
     };
-    const response = await apiRequest(`/soap/notes/${noteId}`, {
+    // Some environments/proxies may not forward DELETE params reliably.
+    // Put user_id explicitly in the query string so the backend receives it.
+    const endpoint = `/soap/notes/${noteId}?user_id=${encodeURIComponent(userId)}`;
+    const response = await apiRequest(endpoint, {
       method: "DELETE",
-      params: { user_id: userId },
       headers,
     });
     if (!response.success)
@@ -662,10 +664,10 @@ export const soapApi = {
       throw new Error("Invalid response from server: missing result");
     } catch (error: any) {
       console.error("Error in generateSoapNote:", error);
+      // Prefer explicit `detail` field from backend (some backends use `detail` instead of `message`)
+      const backendMessage = error?.response?.data?.detail || error?.response?.data?.message;
       throw new Error(
-        error.response?.data?.message ||
-          error.message ||
-          "Failed to generate SOAP note"
+        backendMessage || error.message || "Failed to generate SOAP note"
       );
     }
   },

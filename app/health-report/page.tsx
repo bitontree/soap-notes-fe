@@ -35,10 +35,30 @@ export default function HealthReportPage() {
   const { toast } = useToast()
   const { user } = useAuth()
 
+  const MAX_PDF_SIZE = 20 * 1024 * 1024 // 20MB
+
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    (acceptedFiles: File[], fileRejections: any[]) => {
+      // Handle rejections (wrong type or too large)
+      if (fileRejections && fileRejections.length > 0) {
+        const rej = fileRejections[0]
+        const reasons = (rej.errors || []).map((e: any) => e.message).join("; ") || "Unsupported file"
+        toast({
+          title: "Invalid PDF",
+          description: `${rej.file?.name || 'File'} rejected: ${reasons}`,
+          variant: "destructive",
+        })
+        return
+      }
+
       const pdf = acceptedFiles[0]
       if (pdf) {
+        // Extra runtime guard
+        if (pdf.size > MAX_PDF_SIZE) {
+          toast({ title: "File too large", description: `${pdf.name} exceeds the 20MB limit`, variant: "destructive" })
+          return
+        }
+
         setFile(pdf)
         setUploadResult(null)
         setProgress(0)
@@ -55,6 +75,7 @@ export default function HealthReportPage() {
     onDrop,
     accept: { "application/pdf": [".pdf"] },
     maxFiles: 1,
+    maxSize: MAX_PDF_SIZE,
   })
 
   const resetForm = () => {
@@ -87,6 +108,12 @@ export default function HealthReportPage() {
         description: "Please select a PDF file and select a patient",
         variant: "destructive",
       })
+      return
+    }
+
+    // Prevent uploading files larger than 20MB as an extra safeguard
+    if (file.size > MAX_PDF_SIZE) {
+      toast({ title: "File too large", description: `${file.name} exceeds the 20MB limit`, variant: "destructive" })
       return
     }
 
@@ -124,11 +151,22 @@ export default function HealthReportPage() {
         resetForm()
       }, 500)
     } catch (error: any) {
-      toast({
-        title: "Upload Failed",
-        description: error?.message || "Failed to upload health report. Please try again.",
-        variant: "destructive",
-      })
+      // Detect timeout errors (axios uses code 'ECONNABORTED' for timeouts)
+      const isTimeout = error?.code === "ECONNABORTED" || /timeout/i.test(error?.message || "")
+      if (isTimeout) {
+        // Backend may still be processing the file; avoid showing a failure-style message
+        toast({
+          title: "Processing taking longer than expected",
+          description:
+            "The report is still being processed on the server. We've started processing and you can check back shortly.",
+        })
+      } else {
+        toast({
+          title: "Upload Failed",
+          description: error?.message || "Failed to upload health report. Please try again.",
+          variant: "destructive",
+        })
+      }
     } finally {
       setIsUploading(false)
       setTimeout(() => setProgress(0), 1500)

@@ -10,6 +10,8 @@ import type {
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
+// Default visible duration for toasts (ms). 5000ms = 5 seconds.
+const DEFAULT_TOAST_DURATION = 5000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -156,6 +158,8 @@ function toast({ ...props }: Toast) {
     type: "ADD_TOAST",
     toast: {
       ...props,
+      // Ensure toasts default to 5s visible unless caller overrides
+      duration: (props as any).duration ?? DEFAULT_TOAST_DURATION,
       id,
       open: true,
       onOpenChange: (open) => {

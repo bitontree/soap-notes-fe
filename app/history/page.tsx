@@ -193,17 +193,11 @@ export default function HistoryPage() {
 
   const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      toast({
-        title: "Copied!",
-        description: "Text copied to clipboard",
-      })
+      const out = typeof text === "string" ? text.replace(/\\r\\n/g, "\r\n").replace(/\\n/g, "\n").replace(/\\t/g, "\t") : JSON.stringify(text, null, 2)
+      await navigator.clipboard.writeText(out)
+      toast({ title: "Copied!", description: "Text copied to clipboard" })
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to copy text",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "Failed to copy text", variant: "destructive" })
     }
   }
 
@@ -347,7 +341,7 @@ export default function HistoryPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
-                        {formatDate(note.created_at)} at {formatTime(note.created_at)}
+                        {formatDate(note.created_at)}
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="font-medium text-gray-700 min-w-fit">Chief Complaint:</span>

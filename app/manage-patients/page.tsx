@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { format, isBefore, isValid, parseISO, startOfToday, subDays } from "date-fns"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ import { authApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { sanitizeName, sanitizeEmail, validateName, validateEmail } from "@/lib/utils"
 import { useNameSearch } from "@/hooks/use-name-search"
+import { DatePicker } from "@/components/ui/date-picker"
 
 interface Patient {
   id: string
@@ -215,6 +217,8 @@ function ManagePatientDialogs({
   confirmDelete, deletingId, isUpdating, setIsUpdating 
 }: any) {
   const { toast } = useToast()
+  const latestDob = useMemo(() => subDays(startOfToday(), 1), [])
+  const earliestDob = useMemo(() => new Date(1900, 0, 1), [])
 
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault()
@@ -285,7 +289,24 @@ function ManagePatientDialogs({
       changedFields.phone = editForm.phone
     }
     if (editForm.dob !== undefined && editForm.dob !== selectedPatient.dob) {
-      changedFields.dob = editForm.dob
+      const dobDate = parseISO(editForm.dob)
+      if (!isValid(dobDate) || !isBefore(dobDate, startOfToday())) {
+        toast({
+          title: "Invalid DOB",
+          description: "Date of birth must be before today.",
+          variant: "destructive",
+        })
+        return
+      }
+      if (isBefore(dobDate, earliestDob)) {
+        toast({
+          title: "Invalid DOB",
+          description: "Date of birth must be after Jan 1, 1900.",
+          variant: "destructive",
+        })
+        return
+      }
+      changedFields.dob = format(dobDate, "yyyy-MM-dd")
     }
     
     // If no fields were changed, show message and return
@@ -385,7 +406,23 @@ function ManagePatientDialogs({
             </div>
             <div>
               <Label>DOB</Label>
-              <Input type="date" value={editForm?.dob || ''} onChange={(e) => setEditForm((s:any) => ({ ...s, dob: e.target.value }))} />
+              <DatePicker
+                value={editForm?.dob ?? null}
+                onChange={(value) =>
+                  setEditForm((s: any) => {
+                    const next = { ...s }
+                    if (!value) {
+                      delete next.dob
+                    } else {
+                      next.dob = value
+                    }
+                    return next
+                  })
+                }
+                maxDate={latestDob}
+                minDate={earliestDob}
+                placeholder="Select date"
+              />
             </div>
             <div className="flex justify-end gap-2">
               <Button 
