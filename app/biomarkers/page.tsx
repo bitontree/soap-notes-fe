@@ -795,7 +795,18 @@ export default function BiomarkersPage() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start" side="bottom" sideOffset={4} avoidCollisions={true}>
-                          <Calendar initialFocus mode="range" defaultMonth={dateRange.from} selected={dateRange} onSelect={(range: any) => setDateRange({ from: range?.from, to: range?.to })} numberOfMonths={isSidebarOpen ? 1 : 2} disabled={(date) => date > new Date()} />
+                          <Calendar
+                            initialFocus
+                            mode="range"
+                            captionLayout="dropdown"
+                            fromMonth={new Date(1900, 0, 1)}
+                            toMonth={new Date()}
+                            defaultMonth={dateRange.from}
+                            selected={dateRange}
+                            onSelect={(range: any) => setDateRange({ from: range?.from, to: range?.to })}
+                            numberOfMonths={isSidebarOpen ? 1 : 2}
+                            disabled={(date) => date > new Date()}
+                          />
                           <div className="p-3 border-t"><Button variant="outline" size="sm" onClick={() => setDateRange({ from: undefined, to: undefined })} className="w-full">Clear dates</Button></div>
                         </PopoverContent>
                       </Popover>
