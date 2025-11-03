@@ -27,7 +27,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchNotes = async () => {
       try {
-        const data = await soapApi.getNotes(1, 3) // page=1, limit=3
+  const data = await soapApi.getNotes({ page: 1, limit: 3 }) // page=1, limit=3
         setRecentNotes(data.soap_notes || [])
       } catch (error: any) {
         toast({

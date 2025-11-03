@@ -150,7 +150,7 @@ export default function BiomarkersPage() {
         // Fetch pages until exhausted or safety cap reached
         // This keeps the logic simple while ensuring we don't miss recent notes
         while (page <= MAX_PAGES) {
-          const pageData = await soapApi.getNotes(page, PAGE_SIZE)
+          const pageData = await soapApi.getNotes({ page, limit: PAGE_SIZE })
           const current = pageData?.soap_notes || []
           allNotes.push(...current)
           if (current.length < PAGE_SIZE) break

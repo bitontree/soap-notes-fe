@@ -15,6 +15,7 @@ import { soapApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
+import { DatePicker } from '@/components/ui/date-picker'
 
 interface SOAPNote {
   id: string
@@ -39,6 +40,7 @@ export default function HistoryPage() {
   const [notes, setNotes] = useState<SOAPNote[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [dateFilter, setDateFilter] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
@@ -64,7 +66,7 @@ export default function HistoryPage() {
   const loadNotes = async () => {
     try {
       setIsLoading(true)
-      const response = await soapApi.getNotes(currentPage, 10)
+  const response = await soapApi.getNotes({ page: currentPage, limit: 10 })
       setNotes(response.soap_notes)
       setTotalPages(response.pagination.total_pages)
       setTotalNotes(response.pagination.total)
@@ -79,6 +81,36 @@ export default function HistoryPage() {
       setIsLoading(false)
     }
   }
+
+  // Debounced server-side search: when user types a name or date, call backend with filter_flag
+  useEffect(() => {
+    const term = searchTerm.trim()
+    const date = (dateFilter || "").trim()
+    const timer = setTimeout(async () => {
+      // If both empty, reload normal list for current page
+      if (!term && !date) {
+        await loadNotes()
+        return
+      }
+
+      try {
+        setIsLoading(true)
+        // Use backend filtering: send patient_name/date and set filter_flag=true so backend ignores patient_id
+        const resp = await soapApi.getNotes({ patientName: term || undefined, date: date || undefined, filter_flag: true, page: 1, limit: 50 })
+        setNotes(resp.soap_notes)
+        setTotalPages(resp.pagination.total_pages)
+        setTotalNotes(resp.pagination.total)
+        setCurrentPage(1)
+      } catch (error) {
+        console.error('Failed to search SOAP notes:', error)
+        toast({ title: 'Error', description: 'Failed to search SOAP notes. Please try again.', variant: 'destructive' })
+      } finally {
+        setIsLoading(false)
+      }
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [searchTerm, dateFilter, user])
 
   // Filter notes based on search and filters
   const filteredNotes = notes.filter((note) => {
@@ -239,19 +271,8 @@ export default function HistoryPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div>
-        <Header title="SOAP Notes History" description="View and manage all your medical documentation" />
-        <div className="p-6 flex items-center justify-center">
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span>Loading SOAP notes...</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // NOTE: don't early-return while loading so header and filters stay visible.
+  // We'll render a loading state only for the results area below.
 
   return (
     <div>
@@ -272,14 +293,23 @@ export default function HistoryPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="Search by summary, transcript, or assessment..."
+                    placeholder="Search by Name..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
                   />
                 </div>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <div className="w-full md:w-48">
+                <DatePicker
+                  value={dateFilter ?? undefined}
+                  onChange={(val) => setDateFilter(val)}
+                  placeholder="Filter by date"
+                  allowClear
+                  buttonClassName="h-9 w-full"
+                />
+              </div>
+              {/* <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full md:w-48">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
@@ -299,137 +329,132 @@ export default function HistoryPage() {
                   <SelectItem value="annual">Annual Checkup</SelectItem>
                   <SelectItem value="urgent">Urgent Care</SelectItem>
                 </SelectContent>
-              </Select>
+              </Select> */}
             </div>
           </CardContent>
         </Card>
 
-        {/* Results Summary */}
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600">
-            Showing {filteredNotes.length} of {totalNotes} SOAP notes (Page {currentPage} of {totalPages})
-          </p>
-        </div>
-
-        {/* Notes List */}
-        <div className="space-y-4">
-          {filteredNotes.map((note) => (
-            <Card key={note.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {note.patient_name || 'Unknown Patient'}
-                      </h3>
-                      {/* Status and type badges are hidden in the UI for now. Keep the components here commented
-                          so they can be re-enabled easily in the future. */}
-                      {/*
-                      <Badge variant="default" className="text-xs">
-                        completed
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        {note.soap_data.assessment?.toLowerCase().includes('follow') ? 'Follow-up' : 
-                         note.soap_data.assessment?.toLowerCase().includes('initial') ? 'Initial Consultation' :
-                         note.soap_data.assessment?.toLowerCase().includes('annual') ? 'Annual Checkup' :
-                         note.soap_data.assessment?.toLowerCase().includes('urgent') ? 'Urgent Care' :
-                         'Follow-up'}
-                      </Badge>
-                      */}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4" />
-                        {formatDate(note.created_at)}
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="font-medium text-gray-700 min-w-fit">Chief Complaint:</span>
-                        <span className="text-gray-600">
-                          {(note.soap_data.subjective as any)?.chief_complaint
-                          || (note.soap_data.subjective as any)?.CC
-                          //  extractText(note.soap_data.subjective, 80) ||
-                          //  'Not specified'
-                           }
-                        </span>
-                      </div>
-                    </div>
-
-
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleViewNote(note)}>
-                      <Eye className="mr-2 h-4 w-4" />
-                      View
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => exportToPDF(note)}>
-                          <Download className="mr-2 h-4 w-4" />
-                          Export PDF
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          className="text-red-600"
-                          onClick={() => handleDeleteNote(note.id)}
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-gray-600">
-              Page {currentPage} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              Next
-            </Button>
+        {/* Results area - show loader only for results while keeping filters visible */}
+        {isLoading ? (
+          <div className="p-6 flex items-center justify-center">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span>Loading SOAP notes...</span>
+            </div>
           </div>
-        )}
-
-        {filteredNotes.length === 0 && (
-          <Card>
-            <CardContent className="text-center py-12">
-              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No SOAP notes found</h3>
-              <p className="text-gray-600 mb-4">
-                {searchTerm || statusFilter !== "all" || typeFilter !== "all"
-                  ? "Try adjusting your search criteria or filters"
-                  : "Start by generating your first SOAP note"}
+        ) : (
+          <>
+            {/* Results Summary */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">
+                Showing {filteredNotes.length} of {totalNotes} SOAP notes (Page {currentPage} of {totalPages})
               </p>
-              <Button>
-                <FileText className="mr-2 h-4 w-4" />
-                Generate New Note
-              </Button>
-            </CardContent>
-          </Card>
+            </div>
+
+            {/* Notes List */}
+            <div className="space-y-4">
+              {filteredNotes.map((note) => (
+                <Card key={note.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {note.patient_name || 'Unknown Patient'}
+                          </h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            {formatDate(note.created_at)}
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="font-medium text-gray-700 min-w-fit">Chief Complaint:</span>
+                            <span className="text-gray-600">
+                              {(note.soap_data.subjective as any)?.chief_complaint
+                              || (note.soap_data.subjective as any)?.CC
+                               }
+                            </span>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleViewNote(note)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => exportToPDF(note)}>
+                              <Download className="mr-2 h-4 w-4" />
+                              Export PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-red-600"
+                              onClick={() => handleDeleteNote(note.id)}
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+
+            {filteredNotes.length === 0 && (
+              <Card>
+                <CardContent className="text-center py-12">
+                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No SOAP notes found</h3>
+                  <p className="text-gray-600 mb-4">
+                    {searchTerm || statusFilter !== "all" || typeFilter !== "all"
+                      ? "Try adjusting your search criteria or filters"
+                      : "Start by generating your first SOAP note"}
+                  </p>
+                  <Button>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Generate New Note
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
 
         {/* View SOAP Note Modal */}

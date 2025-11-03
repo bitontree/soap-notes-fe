@@ -530,7 +530,16 @@ export async function parseHealthReportApi(
 // ---------- SOAP Notes API ----------
 
 export const soapApi = {
-  async getNotes(page = 1, limit = 10): Promise<SOAPNotesResponse> {
+  // Fetch SOAP notes. Accepts optional filters matching backend controller: patient_id, patient_name, date, filter_flag, page, limit
+  async getNotes(opts: {
+    patientId?: string;
+    patientName?: string;
+    date?: string;
+    filter_flag?: boolean;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<SOAPNotesResponse> {
+    const { patientId, patientName, date, filter_flag = false, page = 1, limit = 10 } = opts;
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const userId = user.id || user._id;
     if (!userId) throw new Error("User ID not found. Please login again.");
@@ -540,15 +549,18 @@ export const soapApi = {
       ...getAuthHeaders(),
       ...getApiKeyAuthHeaders(),
     };
-    const response = await apiRequest<SOAPNotesResponse>(
-      "/soap-notes-history",
-      {
-        params: { page, limit, user_id: userId },
-        headers,
-      }
-    );
-    if (!response.success)
-      throw new Error(response.message || "Failed to fetch SOAP notes");
+
+    const params: any = { page, limit, user_id: userId };
+    if (patientId) params.patient_id = patientId;
+    if (patientName) params.patient_name = patientName;
+    if (date) params.date = date;
+    if (filter_flag) params.filter_flag = true;
+
+    const response = await apiRequest<SOAPNotesResponse>("/soap-notes-history", {
+      params,
+      headers,
+    });
+    if (!response.success) throw new Error(response.message || "Failed to fetch SOAP notes");
     return response.data!;
   },
 

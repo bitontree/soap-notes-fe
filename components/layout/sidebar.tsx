@@ -53,9 +53,9 @@ export function Sidebar() {
 
   return (
     <div
-      className={cn('flex h-full flex-col bg-white border-r border-gray-200 transition-all duration-150 ease-in-out', sidebarWidth)}
-    onMouseEnter={() => setHovering(true)}
-    onMouseLeave={() => setHovering(false)}
+      className={cn('sticky top-0 flex-shrink-0 h-screen flex flex-col bg-white border-r border-gray-200 transition-all duration-150 ease-in-out', sidebarWidth)}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
     >
       <div className={cn('flex items-center gap-2 px-4 py-3 border-b border-gray-200', collapsed && !hovering ? 'justify-center' : '')}>
         <div className={cn('p-2 rounded-lg', collapsed && !hovering ? 'bg-transparent' : 'bg-blue-100')}>

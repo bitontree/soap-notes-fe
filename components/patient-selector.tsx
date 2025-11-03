@@ -69,6 +69,8 @@ export default function PatientSelector({
     address: "",
   });
 
+  // Inline error state for fields that don't currently have their own hooks
+  const [fieldErrors, setFieldErrors] = useState<{ age?: string; gender?: string; phone?: string }>({})
   // Email validation hook (sanitizes on change)
   const emailValidation = useEmailValidation("")
 
@@ -98,7 +100,8 @@ export default function PatientSelector({
 
   const handleCreatePatient = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    // Clear previous inline errors
+    setFieldErrors({})
     // Smart validation: Only check for business rules that sanitization can't fix
     const isFirstNameValid = firstNameValidation.validate()
     const isLastNameValid = lastNameValidation.validate()
@@ -148,6 +151,40 @@ export default function PatientSelector({
     }
     
     setIsCreating(true);
+
+    // Additional required-field checks for fields marked with asterisk in the UI
+    // Age
+    const ageNum = Number(newPatient.age)
+    if (!newPatient.age || Number.isNaN(ageNum) || ageNum < 0 || ageNum > 150) {
+      setIsCreating(false)
+      setFieldErrors(prev => ({ ...prev, age: "Please enter a valid age between 0 and 150" }))
+      toast({ title: "Age Required", description: "Please enter a valid age", variant: "destructive" })
+      return
+    }
+
+    // Gender
+    if (!newPatient.gender) {
+      setIsCreating(false)
+      setFieldErrors(prev => ({ ...prev, gender: "Please select a gender" }))
+      toast({ title: "Gender Required", description: "Please select a gender", variant: "destructive" })
+      return
+    }
+
+    // Email: must validate via hook
+    const isEmailValid = emailValidation.validate()
+    if (!isEmailValid) {
+      setIsCreating(false)
+      toast({ title: "Email Required", description: "Please enter a valid email address", variant: "destructive" })
+      return
+    }
+
+    // Phone: required in UI; do a simple non-empty check
+    if (!newPatient.phone || newPatient.phone.trim().length === 0) {
+      setIsCreating(false)
+      setFieldErrors(prev => ({ ...prev, phone: "Please enter a phone number" }))
+      toast({ title: "Phone Required", description: "Please enter a phone number", variant: "destructive" })
+      return
+    }
 
     try {
       const patientData = {
@@ -314,7 +351,7 @@ export default function PatientSelector({
           </TabsContent>
 
           <TabsContent value="create" className="space-y-4">
-            <form onSubmit={handleCreatePatient} className="space-y-4">
+            <form onSubmit={handleCreatePatient} noValidate className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstname">First Name <span className="text-red-500">*</span></Label>
@@ -356,11 +393,18 @@ export default function PatientSelector({
                     max="150"
                     value={newPatient.age}
                     onChange={(e) =>
-                      setNewPatient({ ...newPatient, age: e.target.value })
+                      {
+                        setNewPatient({ ...newPatient, age: e.target.value })
+                        // Clear age error when user types
+                        setFieldErrors(prev => ({ ...prev, age: undefined }))
+                      }
                     }
                     placeholder="30"
-                    required
+                    className={fieldErrors.age ? 'border-red-500' : ''}
                   />
+                  {fieldErrors.age && (
+                    <p className="text-sm text-red-500">{fieldErrors.age}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -368,7 +412,10 @@ export default function PatientSelector({
                   <Select
                     value={newPatient.gender}
                     onValueChange={(value) =>
-                      setNewPatient({ ...newPatient, gender: value })
+                      {
+                        setNewPatient({ ...newPatient, gender: value })
+                        setFieldErrors(prev => ({ ...prev, gender: undefined }))
+                      }
                     }
                   >
                     <SelectTrigger>
@@ -397,7 +444,7 @@ export default function PatientSelector({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">Email<span className="text-red-500">*</span></Label>
                   <Input
                     id="email"
                     type="email"
@@ -413,16 +460,23 @@ export default function PatientSelector({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">Phone<span className="text-red-500">*</span></Label>
                   <Input
                     id="phone"
                     type="tel"
                     value={newPatient.phone}
                     onChange={(e) =>
-                      setNewPatient({ ...newPatient, phone: e.target.value })
+                      {
+                        setNewPatient({ ...newPatient, phone: e.target.value })
+                        setFieldErrors(prev => ({ ...prev, phone: undefined }))
+                      }
                     }
                     placeholder="+1 (555) 123-4567"
+                    className={fieldErrors.phone ? 'border-red-500' : ''}
                   />
+                  {fieldErrors.phone && (
+                    <p className="text-sm text-red-500">{fieldErrors.phone}</p>
+                  )}
                 </div>
               </div>
 

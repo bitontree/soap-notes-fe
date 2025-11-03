@@ -1,6 +1,7 @@
 "use client"
+import { useEffect, useMemo, useState, Suspense } from "react"
+import AddPatientDrawer from "@/components/add-patient-drawer"
 
-import { useEffect, useMemo, useState } from "react"
 import { format, isBefore, isValid, parseISO, startOfToday, subDays } from "date-fns"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -44,6 +45,7 @@ export default function ManagePatientsPage() {
     autoSanitize: true, 
     validateOnChange: false 
   })
+    const [isAddOpen, setIsAddOpen] = useState(false)
 
   async function loadPatients() {
     setIsLoading(true)
@@ -85,6 +87,37 @@ export default function ManagePatientsPage() {
     }
   }
 
+  // Export a single patient's data as CSV and trigger download
+  function exportPatient(patient: Patient) {
+    try {
+      const headers = ["id", "firstname", "lastname", "email", "phone", "dob"]
+      const row = [
+        patient.id || "",
+        patient.firstname || "",
+        patient.lastname || "",
+        patient.email || "",
+        patient.phone || "",
+        patient.dob || "",
+      ]
+
+      const csv = [headers.join(","), row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")].join("\n")
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${(patient.firstname || 'patient').replace(/\s+/g, '_')}_${patient.id || Date.now()}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast({ title: "Exported", description: `Exported ${patient.firstname || 'patient'} as CSV` })
+    } catch (err: any) {
+      console.error('Export failed', err)
+      toast({ title: 'Export Failed', description: err?.message || 'Failed to export patient', variant: 'destructive' })
+    }
+  }
+
   // Filter patients based on search query
   const filteredPatients = patients.filter(patient => {
     if (!searchQuery.value.trim()) return true
@@ -92,7 +125,6 @@ export default function ManagePatientsPage() {
     const searchTerm = searchQuery.value.toLowerCase()
     const fullName = `${patient.firstname || ''} ${patient.lastname || ''}`.toLowerCase()
     const email = (patient.email || '').toLowerCase()
-    
     return fullName.includes(searchTerm) || email.includes(searchTerm)
   })
 
@@ -122,6 +154,9 @@ export default function ManagePatientsPage() {
                   Showing {filteredPatients.length} of {patients.length} patients
                 </p>
               )}
+              <Button onClick={() => setIsAddOpen(true)}>
+                + Add Patient
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -157,13 +192,15 @@ export default function ManagePatientsPage() {
 
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
+
+        
                             <Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => { setSelectedPatient(p); setEditForm(p); setIsEditOpen(true) }}>
                               <Edit className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => toast({ title: 'Export', description: 'Export not implemented' })}>
+                            <DropdownMenuItem onClick={() => exportPatient(p)}>
                               <Download className="mr-2 h-4 w-4" /> Export
                             </DropdownMenuItem>
                             <DropdownMenuItem 
@@ -187,6 +224,12 @@ export default function ManagePatientsPage() {
           </CardContent>
         </Card>
       </div>
+      {typeof window !== "undefined" && (
+        <Suspense fallback={null}>
+          <AddPatientDrawer open={isAddOpen} onOpenChange={setIsAddOpen} onCreated={(p: any) => setPatients((prev: any) => [p, ...prev])} />
+        </Suspense>
+      )}
+
       <ManagePatientDialogs
         selectedPatient={selectedPatient}
         isViewOpen={isViewOpen}
