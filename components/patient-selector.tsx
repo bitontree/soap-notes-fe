@@ -71,7 +71,6 @@ export default function PatientSelector({
 
   // Inline error state for fields that don't currently have their own hooks
   const [fieldErrors, setFieldErrors] = useState<{ age?: string; gender?: string; phone?: string }>({})
-
   // Email validation hook (sanitizes on change)
   const emailValidation = useEmailValidation("")
 
