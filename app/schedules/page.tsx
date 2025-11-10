@@ -125,7 +125,7 @@ export default function SchedulesPage() {
   const [confirmDeleteError, setConfirmDeleteError] = useState<string | undefined>(undefined)
   const [confirmDeleteSlot, setConfirmDeleteSlot] = useState<any | null>(null)
   const [waitlistPopupOpen, setWaitlistPopupOpen] = useState(false)
-  const [waitlistSelectedOption, setWaitlistSelectedOption] = useState<'waitlist' | 'select' | null>(null)
+  const [waitlistSelectedOption, setWaitlistSelectedOption] = useState<'waitlist' | 'select' | 'delete' | null>(null)
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [reschedulePayload, setReschedulePayload] = useState<{ patient?: any; slot?: any; slotId?: string; patientId?: string | null } | null>(null)
   const [loadingAll, setLoadingAll] = useState(false)
@@ -684,7 +684,10 @@ export default function SchedulesPage() {
     setWaitlistPopupOpen(true)
   }
 
-  async function handleDeleteWithWaitlist(useWaitlist: boolean) {
+  // mode: 'waitlist' => notify waitlist
+  //       'select'   => open manual add patient drawer after cancel
+  //       'delete'   => just cancel with no further action
+  async function handleDeleteWithWaitlist(mode: 'waitlist' | 'select' | 'delete') {
     setDeletingAppointment(true)
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}')
@@ -736,6 +739,7 @@ export default function SchedulesPage() {
         return
       }
       
+      const useWaitlist = mode === 'waitlist'
       const payload: any = {
         patient_id: freshAppt.patient_id || freshAppt.patient?.id || freshAppt.patient?._id,
         slot_id: freshAppt.slot_id || slotMenuSlotId,
@@ -754,7 +758,9 @@ export default function SchedulesPage() {
       const deletedPatientIndex = slotMenuPatientIndex
       
       await api.appointmentsApi.cancel(apptId, payload)
-      toast({ title: "Deleted", description: `Appointment cancelled successfully${useWaitlist ? ' and waitlist notified' : ''}`, duration: 2000 })
+  const descParts: string[] = ["Appointment cancelled successfully"]
+  if (useWaitlist) descParts.push("waitlist notified")
+  toast({ title: "Deleted", description: descParts.join(' and '), duration: 2000 })
       setWaitlistPopupOpen(false)
       setWaitlistSelectedOption(null)
       // Clear all delete-related state
@@ -794,7 +800,7 @@ export default function SchedulesPage() {
       await refreshSlotsAndSchedules()
       
       // If "Select Patient" was clicked (use_waitlist = false), open the appointment drawer
-      if (!useWaitlist && currentView !== 'dayGridMonth') {
+      if (mode === 'select' && currentView !== 'dayGridMonth') {
         setApptInitialDate(slotDate)
         setApptInitialLocation(slotLocation)
         setApptInitialSlotId(deletedSlotId)
@@ -2631,7 +2637,7 @@ export default function SchedulesPage() {
             </div>
             <div className="p-6 space-y-4">
               <p className="text-sm text-muted-foreground">
-                Would you like to notify patients on the waitlist about this available slot?
+                What would you like to do for this slot?
               </p>
               
               <div className="space-y-3">
@@ -2640,23 +2646,35 @@ export default function SchedulesPage() {
                   variant="default"
                   onClick={() => {
                     setWaitlistSelectedOption('waitlist')
-                    handleDeleteWithWaitlist(true)
+                    handleDeleteWithWaitlist('waitlist')
                   }}
                   disabled={deletingAppointment}
                 >
                   {deletingAppointment && waitlistSelectedOption === 'waitlist' ? "Processing..." : "Use Waitlist"}
                 </Button>
-                
+
                 <Button 
                   className="w-full" 
                   variant="outline"
                   onClick={() => {
                     setWaitlistSelectedOption('select')
-                    handleDeleteWithWaitlist(false)
+                    handleDeleteWithWaitlist('select')
                   }}
                   disabled={deletingAppointment}
                 >
                   {deletingAppointment && waitlistSelectedOption === 'select' ? "Processing..." : "Add Patient Manually"}
+                </Button>
+
+                <Button
+                  className="w-full"
+                  variant="destructive"
+                  onClick={() => {
+                    setWaitlistSelectedOption('delete')
+                    handleDeleteWithWaitlist('delete')
+                  }}
+                  disabled={deletingAppointment}
+                >
+                  {deletingAppointment && waitlistSelectedOption === 'delete' ? 'Processing...' : 'Cancel Only'}
                 </Button>
               </div>
             </div>

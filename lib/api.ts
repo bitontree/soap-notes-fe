@@ -1088,6 +1088,31 @@ export const appointmentsApi = {
   },
 };
 
+// ---------- Confirm Reschedule Decision API ----------
+export interface ConfirmRescheduleDecisionPayload {
+  appointment_id: string;
+  patient_id: string;
+  new_slot_id?: string;
+  confirm_reschedule: boolean;
+  user_id?: string; // if available; backend may infer from notification context
+  notification_id: string;
+}
+
+export async function confirmRescheduleDecision(
+  payload: ConfirmRescheduleDecisionPayload
+): Promise<any> {
+  // This endpoint is used from a public confirmation page; do NOT require auth headers.
+  const response = await apiRequest<any>("/confirmrescheduling/decision", {
+    method: "POST",
+    data: payload,
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.success) {
+    throw new Error(response.message || "Failed to submit reschedule decision");
+  }
+  return response.data;
+}
+
 export async function saveFormToDatabase(formData: any): Promise<any> {
   
   const headers = {

@@ -13,7 +13,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { toast } from "@/hooks/use-toast"
+import { confirmRescheduleDecision } from "@/lib/api"
+// no toast; we show an inline final message and then close the tab
 
 interface RescheduleTokenPayload {
   appointment_id?: string
@@ -64,23 +65,155 @@ export default function ConfirmReschedulingPage() {
   const token = searchParams.get("token")
   const [open, setOpen] = React.useState(true)
   const { payload, isExpired, expiresInSeconds } = React.useMemo(() => decodeJwtPayload(token), [token])
+  const [finalMessage, setFinalMessage] = React.useState<string | null>(null)
+  const [closing, setClosing] = React.useState(false)
+
+  const closePage = React.useCallback(() => {
+    try {
+      window.close()
+    } catch {}
+    // If window.close() is ignored (common when not opened via script), fall back to blanking the tab
+    try {
+      window.location.replace("about:blank")
+    } catch {}
+  }, [])
 
   const handleOpenChange = (nextOpen: boolean) => {
+    // Keep the dialog open; we control closing by blanking/closing the tab
+    if (finalMessage) {
+      setOpen(true)
+      return
+    }
     setOpen(nextOpen)
-    if (!nextOpen) router.replace("/")
   }
 
-  const handleConfirm = () => {
-    if (isExpired) return
-    toast({ title: "Rescheduling confirmed", description: "Thanks! We've recorded your confirmation." })
-    setOpen(false)
-    router.replace("/schedules")
+  const handleConfirm = async () => {
+    if (isExpired || closing) return
+    setClosing(true)
+    try {
+      // Extract identifiers from URL or token with multiple fallback key variants
+      const appointmentId = searchParams.get("appointment_id")
+        || searchParams.get("appointmentId")
+        || searchParams.get("appt_id")
+        || searchParams.get("aid")
+        || (payload as any)?.appointment_id
+        || (payload as any)?.appointmentId
+        || ""
+      const patientId = (payload as any)?.patient_id
+        || (payload as any)?.patient?.id
+        || searchParams.get("patient_id")
+        || searchParams.get("pid")
+        || ""
+      const newSlotId = (payload as any)?.new_slot_id
+        || (payload as any)?.new_slot?.id
+        || (payload as any)?.slot_id
+        || (payload as any)?.slots?.primary?.id
+        || searchParams.get("new_slot_id")
+        || searchParams.get("slot_id")
+        || searchParams.get("slotId")
+        || ""
+        const rawSlotId = searchParams.get("slot_id")
+          || searchParams.get("slotId")
+          || (payload as any)?.slot_id
+          || (payload as any)?.slot?.id
+          || (payload as any)?.slots?.primary?.id
+          || ""
+      const userId = (payload as any)?.user_id || (payload as any)?.doctor_id || undefined
+      const notificationId = searchParams.get("notification_id")
+        || searchParams.get("notificationId")
+        || searchParams.get("nid")
+        || (payload as any)?.notification_id
+        || (payload as any)?.notification?.id
+        || ""
+
+      const payloadToSend = {
+        appointment_id: appointmentId,
+        patient_id: patientId || undefined,
+        new_slot_id: newSlotId || undefined,
+          slot_id: rawSlotId || undefined,
+        confirm_reschedule: true,
+        user_id: userId,
+        notification_id: notificationId,
+      }
+      console.log("[ConfirmRescheduling] Prepared payload", payloadToSend)
+
+      // Only absolutely required: appointment_id & notification_id; attempt call even if patient_id/new_slot_id absent
+      if (!appointmentId) {
+        setFinalMessage("Missing appointment id; cannot confirm rescheduling.")
+      } else if (!notificationId) {
+        setFinalMessage("Missing notification id; cannot confirm rescheduling.")
+      } else {
+        try {
+          await confirmRescheduleDecision(payloadToSend as any)
+          setFinalMessage("Rescheduling done.")
+        } catch (err: any) {
+          console.error("[ConfirmRescheduling] API error", err)
+          setFinalMessage(err?.message || "Failed to confirm rescheduling.")
+        }
+      }
+    } catch (e: any) {
+      console.error("Reschedule confirm error", e)
+      setFinalMessage(e?.message || "Failed to confirm rescheduling.")
+    } finally {
+      // Do NOT auto close; keep dialog open showing final message
+      setClosing(false)
+    }
   }
 
-  const handleDecline = () => {
-    toast({ title: "No changes made", description: "Your existing appointment remains unchanged." })
-    setOpen(false)
-    router.replace("/")
+  const handleDecline = async () => {
+    if (closing) return
+    setClosing(true)
+    try {
+      const appointmentId = searchParams.get("appointment_id")
+        || searchParams.get("appointmentId")
+        || searchParams.get("appt_id")
+        || searchParams.get("aid")
+        || (payload as any)?.appointment_id
+        || (payload as any)?.appointmentId
+        || ""
+      const patientId = (payload as any)?.patient_id
+        || (payload as any)?.patient?.id
+        || searchParams.get("patient_id")
+        || searchParams.get("pid")
+        || ""
+      const userId = (payload as any)?.user_id || (payload as any)?.doctor_id || undefined
+      const notificationId = searchParams.get("notification_id")
+        || searchParams.get("notificationId")
+        || searchParams.get("nid")
+        || (payload as any)?.notification_id
+        || (payload as any)?.notification?.id
+        || ""
+      // Decline path: confirm_reschedule false; new_slot_id optional
+      const declinePayload = {
+        appointment_id: appointmentId,
+        patient_id: patientId || undefined,
+        confirm_reschedule: false,
+        user_id: userId,
+        notification_id: notificationId,
+          // For decline we can still pass slot identifiers for backend auditing
+          new_slot_id: undefined,
+          slot_id: searchParams.get("slot_id") || (payload as any)?.slot_id || undefined,
+      }
+      console.log("[ConfirmRescheduling] Decline payload", declinePayload)
+      if (!appointmentId) {
+        setFinalMessage("Missing appointment id; cannot record decision.")
+      } else if (!notificationId) {
+        setFinalMessage("Missing notification id; cannot record decision.")
+      } else {
+        try {
+          await confirmRescheduleDecision(declinePayload as any)
+          setFinalMessage("Thank you for your cooperation.")
+        } catch (err: any) {
+          console.error("[ConfirmRescheduling] Decline API error", err)
+          setFinalMessage(err?.message || "Failed to record decision.")
+        }
+      }
+    } catch (e: any) {
+      console.error("Reschedule decline error", e)
+      setFinalMessage(e?.message || "Failed to record decision.")
+    } finally {
+      setTimeout(closePage, 2000)
+    }
   }
 
   if (!token) {
@@ -103,46 +236,147 @@ export default function ConfirmReschedulingPage() {
     )
   }
 
-  const when = payload?.target_date && (payload.start_time || payload.old_start_time)
-    ? `${payload.target_date} at ${payload.start_time || payload.old_start_time}`
-    : null
-  const location = payload?.location || null
-  const patientName = payload?.patient_name || null
-  const oldDateTime = payload?.old_date && payload?.old_start_time
-    ? `${payload.old_date} at ${payload.old_start_time}`
-    : null
+  // Adapt to backend payload shape (slots.primary / slots.secondary) as seen in logs.
+  const primarySlotRaw: any = (payload as any)?.slots?.primary || (payload as any)?.slot1 || (payload as any)?.s1 || {}
+  const secondarySlotRaw: any = (payload as any)?.slots?.secondary || (payload as any)?.slot2 || (payload as any)?.s2 || {}
+
+  const newSlotInfo = React.useMemo(() => {
+    const s: any = (payload as any)?.new_slot || primarySlotRaw || {}
+    return {
+      date: s.date || (payload as any)?.target_date || null,
+      start_time: s.start_time || s.start || (payload as any)?.start_time || null,
+      end_time: s.end_time || s.end || (payload as any)?.end_time || null,
+      location: s.location || s.loc || (payload as any)?.location || (payload as any)?.new_location || null,
+    }
+  }, [payload, primarySlotRaw])
+
+  const oldSlotInfo = React.useMemo(() => {
+    const s: any = (payload as any)?.old_slot || secondarySlotRaw || {}
+    return {
+      date: s.date || (payload as any)?.old_date || null,
+      start_time: s.start_time || s.start || (payload as any)?.old_start_time || null,
+      end_time: s.end_time || s.end || (payload as any)?.old_end_time || null,
+      location: s.location || s.loc || (payload as any)?.old_location || (payload as any)?.location || null,
+    }
+  }, [payload, secondarySlotRaw])
+
+  const patientInfo = React.useMemo(() => {
+    const p: any = (payload as any)?.patient || (payload as any)?.patient_info || {}
+    const first = p.firstname || p.first_name || null
+    const last = p.lastname || p.last_name || null
+    const name = p.name || [first, last].filter(Boolean).join(" ") || (payload as any)?.patient_name || null
+    return {
+      name,
+      firstname: first,
+      lastname: last,
+      email: p.email || (payload as any)?.patient_email || null,
+      phone: p.phone || p.mobile || (payload as any)?.patient_phone || null,
+      age: p.age || (payload as any)?.patient_age || null,
+      gender: p.gender || (payload as any)?.patient_gender || null,
+    }
+  }, [payload])
+
+  // Formatting helpers
+  const fmtDate = React.useCallback((iso: string | null | undefined) => {
+    if (!iso) return null
+    try {
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return iso
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    } catch { return iso }
+  }, [])
+
+  const fmtTime = React.useCallback((hhmmss: string | null | undefined) => {
+    if (!hhmmss) return null
+    try {
+      const [hh, mm] = hhmmss.split(":")
+      const d = new Date()
+      d.setHours(Number(hh), Number(mm), 0, 0)
+      return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    } catch { return hhmmss }
+  }, [])
+
+  const when = newSlotInfo.date && newSlotInfo.start_time ? `${fmtDate(newSlotInfo.date)} at ${fmtTime(newSlotInfo.start_time)}` : null
+  const location = newSlotInfo.location
+  const patientName = (payload as any)?.patient_name || patientInfo.name
+  const oldDateTime = oldSlotInfo.date && oldSlotInfo.start_time ? `${fmtDate(oldSlotInfo.date)} at ${fmtTime(oldSlotInfo.start_time)}` : null
+
+  // Build richer patient details directly from token (no network calls)
+  // (Already defined above; keep this spot clear to avoid duplicate declarations.)
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{isExpired ? "Link expired" : "Confirm rescheduling?"}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {finalMessage ? "" : isExpired ? "Link expired" : "Confirm rescheduling?"}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            {isExpired && (
+            {finalMessage && (
+              <span>{finalMessage}</span>
+            )}
+            {!finalMessage && isExpired && (
               <span className="text-destructive">This rescheduling link has expired. Please request a new one.</span>
             )}
-            {!isExpired && (
+            {!finalMessage && !isExpired && (
               <>
-                {when && (
-                  <div>
-                    New time: <strong>{when}</strong>
+                {/* New Slot */}
+                {newSlotInfo.date && (
+                  <div className="mt-1">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">New Slot</div>
+                    <div className="mt-0.5">
+                      <strong>{fmtDate(newSlotInfo.date)}</strong>
+                      {newSlotInfo.start_time && <> at <strong>{fmtTime(newSlotInfo.start_time)}</strong></>}
+                      {newSlotInfo.end_time && <> – <strong>{fmtTime(newSlotInfo.end_time)}</strong></>}
+                    </div>
+                    {newSlotInfo.location && (
+                      <div className="text-xs mt-0.5">Location: <strong>{newSlotInfo.location}</strong></div>
+                    )}
                   </div>
                 )}
-                {oldDateTime && (
-                  <div className="text-xs mt-1">Previous time: {oldDateTime}</div>
+
+                {/* Previous Slot */}
+                {oldSlotInfo.date && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Previous Slot</div>
+                    <div className="mt-0.5">
+                      {fmtDate(oldSlotInfo.date)}
+                      {oldSlotInfo.start_time && <> at {fmtTime(oldSlotInfo.start_time)}</>}
+                      {oldSlotInfo.end_time && <> – {fmtTime(oldSlotInfo.end_time)}</>}
+                    </div>
+                    {oldSlotInfo.location && (
+                      <div className="text-xs mt-0.5">Location: {oldSlotInfo.location}</div>
+                    )}
+                  </div>
                 )}
-                {location && (
-                  <div className="mt-1">Location: <strong>{location}</strong></div>
-                )}
-                {patientName && (
-                  <div className="mt-1">Patient: <strong>{patientName}</strong></div>
+
+                {/* Patient */}
+                {(patientInfo.name || patientInfo.email || patientInfo.phone) && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Patient</div>
+                    {patientInfo.name && (
+                      <div className="mt-0.5">
+                        <strong>{patientInfo.name}</strong>
+                        {patientInfo.age && <span className="text-xs ml-2">({patientInfo.age}y{patientInfo.gender ? ` • ${patientInfo.gender}` : ""})</span>}
+                      </div>
+                    )}
+                    {patientInfo.email && (
+                      <div className="text-xs mt-0.5">Email: {patientInfo.email}</div>
+                    )}
+                    {patientInfo.phone && (
+                      <div className="text-xs">Phone: {patientInfo.phone}</div>
+                    )}
+                  </div>
                 )}
                 {!when && !location && !patientName && (
-                  <span>Do you want to confirm the new appointment time?</span>
+                  <span>Do you want to confirm the reschedule?</span>
                 )}
                 {typeof expiresInSeconds === "number" && expiresInSeconds > 0 && (
-                  <div className="text-xs mt-2 text-muted-foreground">
-                    This link will expire in ~{Math.max(0, Math.floor(expiresInSeconds / 60))}m.
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expiration</div>
+                    <div className="text-xs mt-0.5 text-muted-foreground">
+                      This link will expire in ~{Math.max(0, Math.floor(expiresInSeconds / 60))}m.
+                    </div>
                   </div>
                 )}
               </>
@@ -150,9 +384,15 @@ export default function ConfirmReschedulingPage() {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleDecline}>{isExpired ? "Close" : "No"}</AlertDialogCancel>
-          {!isExpired && (
-            <AlertDialogAction onClick={handleConfirm}>Yes</AlertDialogAction>
+          {finalMessage ? (
+            <AlertDialogAction disabled>{finalMessage}</AlertDialogAction>
+          ) : (
+            <>
+              <AlertDialogCancel onClick={handleDecline}>{isExpired ? "Close" : "No"}</AlertDialogCancel>
+              {!isExpired && (
+                <AlertDialogAction onClick={handleConfirm}>Yes</AlertDialogAction>
+              )}
+            </>
           )}
         </AlertDialogFooter>
       </AlertDialogContent>
