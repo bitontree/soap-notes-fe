@@ -13,7 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { confirmRescheduleDecision } from "@/lib/api"
+import { confirmRescheduleDecision, checkRescheduleValidity } from "@/lib/api"
 // no toast; we show an inline final message and then close the tab
 
 interface RescheduleTokenPayload {
@@ -67,6 +67,9 @@ export default function ConfirmReschedulingPage() {
   const { payload, isExpired, expiresInSeconds } = React.useMemo(() => decodeJwtPayload(token), [token])
   const [finalMessage, setFinalMessage] = React.useState<string | null>(null)
   const [closing, setClosing] = React.useState(false)
+  const [validityStatus, setValidityStatus] = React.useState<string | null>(null)
+  const [validityError, setValidityError] = React.useState<string | null>(null)
+  const [checkingValidity, setCheckingValidity] = React.useState<boolean>(false)
 
   const closePage = React.useCallback(() => {
     try {
@@ -86,6 +89,41 @@ export default function ConfirmReschedulingPage() {
     }
     setOpen(nextOpen)
   }
+
+  // On initial load, call validity API
+  React.useEffect(() => {
+    if (!token) return
+    setCheckingValidity(true)
+    // Derive patient_id & notification_id from token payload or query
+    const patientId = (payload as any)?.patient_id
+      || (payload as any)?.patient?.id
+      || searchParams.get("patient_id")
+      || searchParams.get("pid")
+      || ""
+    const notificationId = searchParams.get("notification_id")
+      || searchParams.get("notificationId")
+      || searchParams.get("nid")
+      || (payload as any)?.notification_id
+      || (payload as any)?.notification?.id
+      || ""
+    if (!notificationId || !patientId) {
+      // If missing critical ids, show expired-like message
+      setValidityStatus("no_response")
+      setCheckingValidity(false)
+      return
+    }
+    ;(async () => {
+      try {
+        const res = await checkRescheduleValidity({ patient_id: patientId, notification_id: notificationId })
+        setValidityStatus(res.status)
+      } catch (e: any) {
+        setValidityError(e?.message || "Failed to check status")
+      } finally {
+        setCheckingValidity(false)
+      }
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
 
   const handleConfirm = async () => {
     if (isExpired || closing) return
@@ -134,6 +172,7 @@ export default function ConfirmReschedulingPage() {
         confirm_reschedule: true,
         user_id: userId,
         notification_id: notificationId,
+        token: token || undefined,
       }
       console.log("[ConfirmRescheduling] Prepared payload", payloadToSend)
 
@@ -145,6 +184,15 @@ export default function ConfirmReschedulingPage() {
       } else {
         try {
           await confirmRescheduleDecision(payloadToSend as any)
+          // Immediately re-check validity after decision
+          setCheckingValidity(true)
+          try {
+            const res = await checkRescheduleValidity({ patient_id: patientId || "", notification_id: notificationId })
+            setValidityStatus(res.status)
+          } catch {}
+          finally {
+            setCheckingValidity(false)
+          }
           setFinalMessage("Rescheduling done.")
         } catch (err: any) {
           console.error("[ConfirmRescheduling] API error", err)
@@ -193,6 +241,7 @@ export default function ConfirmReschedulingPage() {
           // For decline we can still pass slot identifiers for backend auditing
           new_slot_id: undefined,
           slot_id: searchParams.get("slot_id") || (payload as any)?.slot_id || undefined,
+          token: token || undefined,
       }
       console.log("[ConfirmRescheduling] Decline payload", declinePayload)
       if (!appointmentId) {
@@ -202,6 +251,15 @@ export default function ConfirmReschedulingPage() {
       } else {
         try {
           await confirmRescheduleDecision(declinePayload as any)
+          // Immediately re-check validity after decision
+          setCheckingValidity(true)
+          try {
+            const res = await checkRescheduleValidity({ patient_id: patientId || "", notification_id: notificationId })
+            setValidityStatus(res.status)
+          } catch {}
+          finally {
+            setCheckingValidity(false)
+          }
           setFinalMessage("Thank you for your cooperation.")
         } catch (err: any) {
           console.error("[ConfirmRescheduling] Decline API error", err)
@@ -303,6 +361,59 @@ export default function ConfirmReschedulingPage() {
 
   // Build richer patient details directly from token (no network calls)
   // (Already defined above; keep this spot clear to avoid duplicate declarations.)
+
+  // Loader for validity checks
+  if (checkingValidity) {
+    return (
+      <AlertDialog open={true}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle></AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <svg className="h-5 w-5 animate-spin text-muted-foreground" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                Checking status...
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+        </AlertDialogContent>
+      </AlertDialog>
+    )
+  }
+
+  // Status mapping messages (override normal UI when not pending)
+  if (validityStatus && validityStatus !== 'pending') {
+    let message: string
+    if (validityStatus === 'booked') {
+      message = 'Your appointment is rescheduled successfully, thank you for your response.'
+    } else if (validityStatus === 'rejected') {
+      message = 'Thank you for your response.'
+    } else if (validityStatus === 'no_response') {
+      message = 'Link expired'
+    } else {
+      message = validityError || 'Status: ' + validityStatus
+    }
+    return (
+      <AlertDialog open={true}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle></AlertDialogTitle>
+            <AlertDialogDescription>
+              <span>{message}</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction asChild>
+              <Button onClick={() => closePage()}>Close</Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    )
+  }
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>

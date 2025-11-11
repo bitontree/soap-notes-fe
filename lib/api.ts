@@ -1113,6 +1113,35 @@ export async function confirmRescheduleDecision(
   return response.data;
 }
 
+// ---------- Confirm Reschedule Validity API ----------
+export interface CheckValidityPayload {
+  patient_id: string;
+  notification_id: string;
+}
+
+export interface CheckValidityResponse {
+  status: "pending" | "booked" | "rejected" | "no_response" | string;
+  [key: string]: any;
+}
+
+export async function checkRescheduleValidity(
+  payload: CheckValidityPayload
+): Promise<CheckValidityResponse> {
+  // Public endpoint similar to decision; no auth headers
+  const response = await apiRequest<CheckValidityResponse>(
+    "/confirmrescheduling/check_validity",
+    {
+      method: "POST",
+      data: payload,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  if (!response.success) {
+    throw new Error(response.message || "Failed to check reschedule validity");
+  }
+  return (response.data || {}) as CheckValidityResponse;
+}
+
 export async function saveFormToDatabase(formData: any): Promise<any> {
   
   const headers = {
