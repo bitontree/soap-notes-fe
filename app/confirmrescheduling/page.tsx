@@ -4,8 +4,6 @@ import React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -67,19 +65,12 @@ export default function ConfirmReschedulingPage() {
   const { payload, isExpired, expiresInSeconds } = React.useMemo(() => decodeJwtPayload(token), [token])
   const [finalMessage, setFinalMessage] = React.useState<string | null>(null)
   const [closing, setClosing] = React.useState(false)
+  // Track which decision was clicked to show loader in-button and disable the other
+  const [selectedDecision, setSelectedDecision] = React.useState<"yes" | "no" | null>(null)
   const [validityStatus, setValidityStatus] = React.useState<string | null>(null)
   const [validityError, setValidityError] = React.useState<string | null>(null)
   const [checkingValidity, setCheckingValidity] = React.useState<boolean>(false)
-
-  const closePage = React.useCallback(() => {
-    try {
-      window.close()
-    } catch {}
-    // If window.close() is ignored (common when not opened via script), fall back to blanking the tab
-    try {
-      window.location.replace("about:blank")
-    } catch {}
-  }, [])
+  // No close behavior; keep dialog visible and do not navigate away
 
   const handleOpenChange = (nextOpen: boolean) => {
     // Keep the dialog open; we control closing by blanking/closing the tab
@@ -128,6 +119,7 @@ export default function ConfirmReschedulingPage() {
   const handleConfirm = async () => {
     if (isExpired || closing) return
     setClosing(true)
+    setSelectedDecision("yes")
     try {
       // Extract identifiers from URL or token with multiple fallback key variants
       const appointmentId = searchParams.get("appointment_id")
@@ -184,19 +176,36 @@ export default function ConfirmReschedulingPage() {
       } else {
         try {
           await confirmRescheduleDecision(payloadToSend as any)
-          // Immediately re-check validity after decision
+          // Show immediate success message, then refine based on validity in background
+          setFinalMessage("Rescheduling done.")
           setCheckingValidity(true)
           try {
             const res = await checkRescheduleValidity({ patient_id: patientId || "", notification_id: notificationId })
             setValidityStatus(res.status)
-          } catch {}
-          finally {
+            let message: string
+            if (res.status === 'booked') {
+              message = 'Your appointment is rescheduled successfully, thank you for your response.'
+            } else if (res.status === 'rejected') {
+              message = 'Thank you for your response.'
+            } else if (res.status === 'no_response') {
+              message = 'Link expired'
+            } else {
+              message = validityError || ('Status: ' + String(res.status))
+            }
+            setFinalMessage(message)
+          } catch {
+            // Keep the initial friendly message
+          } finally {
             setCheckingValidity(false)
           }
-          setFinalMessage("Rescheduling done.")
         } catch (err: any) {
           console.error("[ConfirmRescheduling] API error", err)
-          setFinalMessage(err?.message || "Failed to confirm rescheduling.")
+          // If backend returns 410 Gone => token expired. Show expired message regardless of validity API.
+          if (err?.status === 410) {
+            setFinalMessage("This rescheduling link has expired. Please request a new one.")
+          } else {
+            setFinalMessage(err?.message || "Failed to confirm rescheduling.")
+          }
         }
       }
     } catch (e: any) {
@@ -211,6 +220,7 @@ export default function ConfirmReschedulingPage() {
   const handleDecline = async () => {
     if (closing) return
     setClosing(true)
+    setSelectedDecision("no")
     try {
       const appointmentId = searchParams.get("appointment_id")
         || searchParams.get("appointmentId")
@@ -251,26 +261,43 @@ export default function ConfirmReschedulingPage() {
       } else {
         try {
           await confirmRescheduleDecision(declinePayload as any)
-          // Immediately re-check validity after decision
+          // Show immediate acknowledgement, then refine based on validity
+          setFinalMessage("Thank you for your cooperation.")
           setCheckingValidity(true)
           try {
             const res = await checkRescheduleValidity({ patient_id: patientId || "", notification_id: notificationId })
             setValidityStatus(res.status)
-          } catch {}
-          finally {
+            let message: string
+            if (res.status === 'booked') {
+              message = 'Your appointment is rescheduled successfully, thank you for your response.'
+            } else if (res.status === 'rejected') {
+              message = 'Thank you for your response.'
+            } else if (res.status === 'no_response') {
+              message = 'Your link has expired, please contact the clinic if you wish to reschedule.'
+            } else {
+              message = validityError || ('Status: ' + String(res.status))
+            }
+            setFinalMessage(message)
+          } catch {
+            // Keep initial acknowledgement
+          } finally {
             setCheckingValidity(false)
           }
-          setFinalMessage("Thank you for your cooperation.")
         } catch (err: any) {
           console.error("[ConfirmRescheduling] Decline API error", err)
-          setFinalMessage(err?.message || "Failed to record decision.")
+          if (err?.status === 410) {
+            setFinalMessage("This rescheduling link has expired. Please request a new one.")
+          } else {
+            setFinalMessage(err?.message || "Failed to record decision.")
+          }
         }
       }
     } catch (e: any) {
       console.error("Reschedule decline error", e)
       setFinalMessage(e?.message || "Failed to record decision.")
     } finally {
-      setTimeout(closePage, 2000)
+      // Do NOT auto close; keep dialog open showing final message
+      setClosing(false)
     }
   }
 
@@ -284,11 +311,6 @@ export default function ConfirmReschedulingPage() {
               This link is missing the required token parameter. Please use the original link that was sent to you.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction asChild>
-              <Button onClick={() => router.replace("/")}>Close</Button>
-            </AlertDialogAction>
-          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     )
@@ -363,7 +385,7 @@ export default function ConfirmReschedulingPage() {
   // (Already defined above; keep this spot clear to avoid duplicate declarations.)
 
   // Loader for validity checks
-  if (checkingValidity) {
+  if (checkingValidity && !finalMessage) {
     return (
       <AlertDialog open={true}>
         <AlertDialogContent>
@@ -385,7 +407,7 @@ export default function ConfirmReschedulingPage() {
   }
 
   // Status mapping messages (override normal UI when not pending)
-  if (validityStatus && validityStatus !== 'pending') {
+  if (!finalMessage && validityStatus && validityStatus !== 'pending') {
     let message: string
     if (validityStatus === 'booked') {
       message = 'Your appointment is rescheduled successfully, thank you for your response.'
@@ -405,11 +427,6 @@ export default function ConfirmReschedulingPage() {
               <span>{message}</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction asChild>
-              <Button onClick={() => closePage()}>Close</Button>
-            </AlertDialogAction>
-          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     )
@@ -494,18 +511,43 @@ export default function ConfirmReschedulingPage() {
             )}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          {finalMessage ? (
-            <AlertDialogAction disabled>{finalMessage}</AlertDialogAction>
-          ) : (
-            <>
-              <AlertDialogCancel onClick={handleDecline}>{isExpired ? "Close" : "No"}</AlertDialogCancel>
-              {!isExpired && (
-                <AlertDialogAction onClick={handleConfirm}>Yes</AlertDialogAction>
+        {!finalMessage && !isExpired && (
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleDecline}
+              disabled={closing && selectedDecision === "yes"}
+            >
+              {selectedDecision === "no" && closing ? (
+                <span className="inline-flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  No
+                </span>
+              ) : (
+                <>No</>
               )}
-            </>
-          )}
-        </AlertDialogFooter>
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={closing && selectedDecision === "no"}
+            >
+              {selectedDecision === "yes" && closing ? (
+                <span className="inline-flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  Yes
+                </span>
+              ) : (
+                <>Yes</>
+              )}
+            </Button>
+          </AlertDialogFooter>
+        )}
       </AlertDialogContent>
     </AlertDialog>
   )
