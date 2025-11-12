@@ -47,7 +47,11 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
     if (typeof onOpenChange === 'function') onOpenChange(v)
     if (typeof controlledOpen !== 'boolean') setInternalOpen(v)
     // clear any local initial patient index when closing
-    if (!v) setApptInitialPatientIndex(undefined)
+    if (!v) {
+      setApptInitialPatientIndex(undefined)
+      // ensure waitlist checkbox resets when closing
+      setAddToWaitlist(false)
+    }
   }
 
   const [query, setQuery] = React.useState("")
@@ -137,6 +141,8 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   setSelected(null)
   setQuery("")
   setShowAddPatientForm(false)
+  // Reset waitlist to unchecked by default on each open
+  setAddToWaitlist(false)
 
     // autofocus search field when drawer opens
     setTimeout(() => { try { searchRef.current?.focus() } catch (e) {} }, 50)
