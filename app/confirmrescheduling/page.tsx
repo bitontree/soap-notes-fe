@@ -182,17 +182,8 @@ export default function ConfirmReschedulingPage() {
           try {
             const res = await checkRescheduleValidity({ patient_id: patientId || "", notification_id: notificationId })
             setValidityStatus(res.status)
-            let message: string
-            if (res.status === 'booked') {
-              message = 'Your appointment is rescheduled successfully, thank you for your response.'
-            } else if (res.status === 'rejected') {
-              message = 'Thank you for your response.'
-            } else if (res.status === 'no_response') {
-              message = 'Link expired'
-            } else {
-              message = validityError || ('Status: ' + String(res.status))
-            }
-            setFinalMessage(message)
+            // Build a message that includes decoded slot details based on status
+            setFinalMessage(buildFinalMessage(res.status, validityError))
           } catch {
             // Keep the initial friendly message
           } finally {
@@ -267,17 +258,13 @@ export default function ConfirmReschedulingPage() {
           try {
             const res = await checkRescheduleValidity({ patient_id: patientId || "", notification_id: notificationId })
             setValidityStatus(res.status)
-            let message: string
-            if (res.status === 'booked') {
-              message = 'Your appointment is rescheduled successfully, thank you for your response.'
-            } else if (res.status === 'rejected') {
-              message = 'Thank you for your response.'
-            } else if (res.status === 'no_response') {
-              message = 'Your link has expired, please contact the clinic if you wish to reschedule.'
+            // Build a message that includes decoded slot details based on status
+            // For 'no_response' we keep the slightly different wording used previously
+            if (res.status === 'no_response') {
+              setFinalMessage('Your link has expired, please contact the clinic if you wish to reschedule.')
             } else {
-              message = validityError || ('Status: ' + String(res.status))
+              setFinalMessage(buildFinalMessage(res.status, validityError))
             }
-            setFinalMessage(message)
           } catch {
             // Keep initial acknowledgement
           } finally {
@@ -323,20 +310,20 @@ export default function ConfirmReschedulingPage() {
   const newSlotInfo = React.useMemo(() => {
     const s: any = (payload as any)?.new_slot || primarySlotRaw || {}
     return {
-      date: s.date || (payload as any)?.target_date || null,
-      start_time: s.start_time || s.start || (payload as any)?.start_time || null,
-      end_time: s.end_time || s.end || (payload as any)?.end_time || null,
-      location: s.location || s.loc || (payload as any)?.location || (payload as any)?.new_location || null,
+      date: s.date || (payload as any)?.target_date || (payload as any)?.slot_date_1 || (payload as any)?.slot_date || null,
+      start_time: s.start_time || s.start || (payload as any)?.start_time || (payload as any)?.slot_start_1 || (payload as any)?.slot_start || null,
+      end_time: s.end_time || s.end || (payload as any)?.end_time || (payload as any)?.slot_end_1 || (payload as any)?.slot_end || null,
+      location: s.location || s.loc || (payload as any)?.location || (payload as any)?.new_location || (payload as any)?.slot_location_1 || null,
     }
   }, [payload, primarySlotRaw])
 
   const oldSlotInfo = React.useMemo(() => {
     const s: any = (payload as any)?.old_slot || secondarySlotRaw || {}
     return {
-      date: s.date || (payload as any)?.old_date || null,
-      start_time: s.start_time || s.start || (payload as any)?.old_start_time || null,
-      end_time: s.end_time || s.end || (payload as any)?.old_end_time || null,
-      location: s.location || s.loc || (payload as any)?.old_location || (payload as any)?.location || null,
+      date: s.date || (payload as any)?.old_date || (payload as any)?.slot_date_2 || null,
+      start_time: s.start_time || s.start || (payload as any)?.old_start_time || (payload as any)?.slot_start_2 || null,
+      end_time: s.end_time || s.end || (payload as any)?.old_end_time || (payload as any)?.slot_end_2 || null,
+      location: s.location || s.loc || (payload as any)?.old_location || (payload as any)?.location || (payload as any)?.slot_location_2 || null,
     }
   }, [payload, secondarySlotRaw])
 
@@ -376,10 +363,92 @@ export default function ConfirmReschedulingPage() {
     } catch { return hhmmss }
   }, [])
 
+  // Build human friendly slot-detail string from decoded payload values
+  const formatSlotDetails = React.useCallback((slot: { date?: string | null; start_time?: string | null; end_time?: string | null; location?: string | null } | null) => {
+    if (!slot) return null
+    const d = slot.date ? fmtDate(slot.date) : null
+    const s = slot.start_time ? fmtTime(slot.start_time) : null
+    const e = slot.end_time ? fmtTime(slot.end_time) : null
+    const loc = slot.location || null
+    const parts: string[] = []
+    if (d) parts.push(String(d))
+    if (s) parts.push(`at ${s}`)
+    if (e) parts.push(`– ${e}`)
+    const when = parts.length ? parts.join(" ") : null
+    return [when, loc].filter(Boolean).join(loc ? " (Location: " : "").replace(/\(Location: /, " (Location: ") + (loc ? ")" : "").replace("()", "").trim()
+  }, [fmtDate, fmtTime])
+
+  // Return a final message string including decoded slot values for the relevant slot
+  const buildFinalMessage = React.useCallback((status: string | null | undefined, fallback?: string | null) => {
+    const normalized = String(status || "").toLowerCase()
+    // For accepted/booked show primary / slot_id_1 (newSlotInfo), for rejected show secondary / slot_id_2 (oldSlotInfo)
+    if (normalized === 'booked' || normalized === 'accepted') {
+      const details = formatSlotDetails(newSlotInfo)
+      return `Your appointment is rescheduled successfully.${details ? '\n' + details : ''}`
+    }
+    if (normalized === 'rejected') {
+      const details = formatSlotDetails(oldSlotInfo)
+      return `Thank you for your response.${details ? '\n' + details : ''}`
+    }
+    if (normalized === 'no_response') {
+      return 'Link expired'
+    }
+    return fallback || ('Status: ' + String(status))
+  }, [formatSlotDetails, newSlotInfo, oldSlotInfo])
+
+  // Choose which slot to show: prefer server validityStatus, fallback to user's selected decision
+  const chooseRelevantSlot = React.useCallback(() => {
+    const s = String(validityStatus || "").toLowerCase()
+    if (s === 'booked' || s === 'accepted') return newSlotInfo
+    if (s === 'rejected') return oldSlotInfo
+    if (selectedDecision === 'yes') return newSlotInfo
+    if (selectedDecision === 'no') return oldSlotInfo
+    return null
+  }, [validityStatus, selectedDecision, newSlotInfo, oldSlotInfo])
+
+  // Render a small, user-friendly slot block (date / time / location)
+  const renderSlotBlock = React.useCallback((slot: any, title?: string | null) => {
+    if (!slot) return null
+    const hasAny = slot.date || slot.start_time || slot.end_time || slot.location
+    if (!hasAny) return null
+    return (
+      <div className="mt-3">
+        {title && <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>}
+        <div className="mt-0.5">
+          {slot.date && (<div><strong>{fmtDate(slot.date)}</strong>{slot.start_time && <> at <strong>{fmtTime(slot.start_time)}</strong></>}</div>)}
+          {slot.end_time && slot.start_time && (<div className="text-sm text-muted-foreground">Ends at {fmtTime(slot.end_time)}</div>)}
+          {slot.location && (<div className="text-sm mt-1">Location: <strong>{slot.location}</strong></div>)}
+        </div>
+      </div>
+    )
+  }, [fmtDate, fmtTime])
+
+  // Render the exact appointment details lines the user requested
+  const renderAppointmentDetails = React.useCallback((slot: any) => {
+    if (!slot) return null
+    const hasAny = slot.date || slot.start_time || slot.end_time || slot.location
+    if (!hasAny) return null
+    const date = slot.date ? fmtDate(slot.date) : ""
+    const start = slot.start_time ? fmtTime(slot.start_time) : ""
+    const end = slot.end_time ? fmtTime(slot.end_time) : ""
+    const location = slot.location || ""
+    const slotTime = start && end ? `${start} - ${end}` : start || end || ""
+    return (
+      <div className="mt-3 text-sm">
+        <div className="text-base font-semibold text-muted-foreground">Thank you for your response, your appointment details are:</div>
+        <div className="mt-2">
+          <div><strong>date:</strong> {date}</div>
+          <div className="mt-1"><strong>location:</strong> {location}</div>
+          <div className="mt-1"><strong>slot_time:</strong> {slotTime}</div>
+        </div>
+      </div>
+    )
+  }, [fmtDate, fmtTime])
+
   const when = newSlotInfo.date && newSlotInfo.start_time ? `${fmtDate(newSlotInfo.date)} at ${fmtTime(newSlotInfo.start_time)}` : null
   const location = newSlotInfo.location
   const patientName = (payload as any)?.patient_name || patientInfo.name
-  const oldDateTime = oldSlotInfo.date && oldSlotInfo.start_time ? `${fmtDate(oldSlotInfo.date)} at ${fmtTime(oldSlotInfo.start_time)}` : null
+  // const oldDateTime = oldSlotInfo.date && oldSlotInfo.start_time ? `${fmtDate(oldSlotInfo.date)} at ${fmtTime(oldSlotInfo.start_time)}` : null
 
   // Build richer patient details directly from token (no network calls)
   // (Already defined above; keep this spot clear to avoid duplicate declarations.)
@@ -408,23 +477,15 @@ export default function ConfirmReschedulingPage() {
 
   // Status mapping messages (override normal UI when not pending)
   if (!finalMessage && validityStatus && validityStatus !== 'pending') {
-    let message: string
-    if (validityStatus === 'booked') {
-      message = 'Your appointment is rescheduled successfully, thank you for your response.'
-    } else if (validityStatus === 'rejected') {
-      message = 'Thank you for your response.'
-    } else if (validityStatus === 'no_response') {
-      message = 'Link expired'
-    } else {
-      message = validityError || 'Status: ' + validityStatus
-    }
+    // const message = buildFinalMessage(validityStatus, validityError)
+    const relevantSlot = chooseRelevantSlot()
     return (
       <AlertDialog open={true}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle></AlertDialogTitle>
             <AlertDialogDescription>
-              <span>{message}</span>
+              {renderAppointmentDetails(relevantSlot)}
             </AlertDialogDescription>
           </AlertDialogHeader>
         </AlertDialogContent>
@@ -440,9 +501,7 @@ export default function ConfirmReschedulingPage() {
             {finalMessage ? "" : isExpired ? "Link expired" : "Confirm rescheduling?"}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {finalMessage && (
-              <span>{finalMessage}</span>
-            )}
+            {finalMessage && renderAppointmentDetails(chooseRelevantSlot())}
             {!finalMessage && isExpired && (
               <span className="text-destructive">This rescheduling link has expired. Please request a new one.</span>
             )}
