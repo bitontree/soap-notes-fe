@@ -435,11 +435,11 @@ export default function ConfirmReschedulingPage() {
     const slotTime = start && end ? `${start} - ${end}` : start || end || ""
     return (
       <div className="mt-3 text-sm">
-        <div className="text-base font-semibold text-muted-foreground">Thank you for your response, your appointment details are:</div>
-        <div className="mt-2">
-          <div><strong>date:</strong> {date}</div>
-          <div className="mt-1"><strong>location:</strong> {location}</div>
-          <div className="mt-1"><strong>slot_time:</strong> {slotTime}</div>
+        <div className="text-lg font-bold text-muted-foreground">Thank you for your response — your appointment details:</div>
+        <div className="mt-3 space-y-1">
+          <div><span className="font-semibold">Date:</span> <span className="text-gray-700">{date || '—'}</span></div>
+          <div><span className="font-semibold">Location:</span> <span className="text-gray-700">{location || '—'}</span></div>
+          <div><span className="font-semibold">Slot Time:</span> <span className="text-gray-700">{slotTime || '—'}</span></div>
         </div>
       </div>
     )
@@ -448,7 +448,7 @@ export default function ConfirmReschedulingPage() {
   const when = newSlotInfo.date && newSlotInfo.start_time ? `${fmtDate(newSlotInfo.date)} at ${fmtTime(newSlotInfo.start_time)}` : null
   const location = newSlotInfo.location
   const patientName = (payload as any)?.patient_name || patientInfo.name
-  // const oldDateTime = oldSlotInfo.date && oldSlotInfo.start_time ? `${fmtDate(oldSlotInfo.date)} at ${fmtTime(oldSlotInfo.start_time)}` : null
+  const oldDateTime = oldSlotInfo.date && oldSlotInfo.start_time ? `${fmtDate(oldSlotInfo.date)} at ${fmtTime(oldSlotInfo.start_time)}` : null
 
   // Build richer patient details directly from token (no network calls)
   // (Already defined above; keep this spot clear to avoid duplicate declarations.)
