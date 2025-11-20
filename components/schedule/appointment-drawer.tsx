@@ -4,6 +4,7 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectTrigger,
@@ -46,7 +47,11 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
     if (typeof onOpenChange === 'function') onOpenChange(v)
     if (typeof controlledOpen !== 'boolean') setInternalOpen(v)
     // clear any local initial patient index when closing
-    if (!v) setApptInitialPatientIndex(undefined)
+    if (!v) {
+      setApptInitialPatientIndex(undefined)
+      // ensure waitlist checkbox resets when closing
+      setAddToWaitlist(false)
+    }
   }
 
   const [query, setQuery] = React.useState("")
@@ -72,6 +77,7 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   const [newGender, setNewGender] = React.useState("")
   const [creatingPatient, setCreatingPatient] = React.useState(false)
   const [booking, setBooking] = React.useState(false)
+  const [addToWaitlist, setAddToWaitlist] = React.useState(false)
   const searchRef = React.useRef<HTMLInputElement | null>(null)
 
   // Reset inline new-patient fields whenever the inline form is opened
@@ -135,6 +141,8 @@ export function AppointmentDrawer({ open: controlledOpen, initialDate, initialLo
   setSelected(null)
   setQuery("")
   setShowAddPatientForm(false)
+  // Reset waitlist to unchecked by default on each open
+  setAddToWaitlist(false)
 
     // autofocus search field when drawer opens
     setTimeout(() => { try { searchRef.current?.focus() } catch (e) {} }, 50)
@@ -365,6 +373,9 @@ const handleConfirm = () => {
         // target partition index for multi-patient slots (optional)
         patient_index: typeof apptInitialPatientIndex === 'number' ? apptInitialPatientIndex : undefined,
         notes: undefined,
+        // Explicit flag to indicate whether booking should be placed on the waitlist
+        // Always include the flag (default false) so backend receives a deterministic value
+        add_to_waitlist: addToWaitlist === true,
       };
 
       const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -579,6 +590,11 @@ const handleConfirm = () => {
               <div>
                 <Label>Location</Label>
                 <Input placeholder="Location" value={location || ""} readOnly />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox checked={addToWaitlist} onCheckedChange={(v) => setAddToWaitlist(Boolean(v))} />
+                <Label className="mb-0">Get added to waitlist</Label>
               </div>
 
               <div className="pt-2">
