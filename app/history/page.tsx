@@ -494,10 +494,11 @@ export default function HistoryPage() {
                 </div>
 
                 <Tabs defaultValue="soap" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="soap">SOAP Note</TabsTrigger>
                     <TabsTrigger value="transcript">Transcript</TabsTrigger>
                     <TabsTrigger value="summary">Summary</TabsTrigger>
+                    <TabsTrigger value="icd">ICD Codes</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="soap" className="space-y-4">
@@ -600,6 +601,42 @@ export default function HistoryPage() {
                         <div className="space-y-4">
                           <pre className="whitespace-pre-wrap text-gray-700">{selectedNote.summary || 'No summary available'}</pre>
                         </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* ICD-10 Disease & Injury Codes (Diagnoses) */}
+                  <TabsContent value="icd">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>ICD-10 Disease Codes (Diagnoses)</CardTitle>
+                        <CardDescription>Diagnoses only — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {Array.isArray((selectedNote as any)?.insurance_codes) && (selectedNote as any)?.insurance_codes.length > 0 ? (
+                          <div className="space-y-3">
+                            {((selectedNote as any).insurance_codes as Array<{ code: string; description?: string; match?: number }>).map((ic, idx) => (
+                              <div key={idx} className="flex items-center justify-between rounded border p-3">
+                                <div className="flex items-center gap-3">
+                                  <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
+                                  <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {typeof ic.match === 'number' && (
+                                    <span className="text-xs rounded px-2 py-1 bg-green-100 text-green-700">{Math.round(ic.match)}% match</span>
+                                  )}
+                                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(ic.code)}>
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-gray-700">
+                            No ICD-10 diagnosis codes available for this note.
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
