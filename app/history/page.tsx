@@ -11,7 +11,7 @@ import { Search, Filter, Calendar, FileText, Eye, Download, MoreHorizontal, Load
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { soapApi } from "@/lib/api"
+import { soapApi, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
@@ -49,6 +49,8 @@ export default function HistoryPage() {
   const [selectedNote, setSelectedNote] = useState<SOAPNote | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [isExportingPDF, setIsExportingPDF] = useState(false)
+  const [icdCodes, setIcdCodes] = useState<ICDBillingCodeItem[]>([])
+  const [isLoadingIcdCodes, setIsLoadingIcdCodes] = useState(false)
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -218,9 +220,38 @@ export default function HistoryPage() {
     setCurrentPage(page)
   }
 
+  const fetchIcdCodes = async (note: SOAPNote) => {
+    const noteId = note?.id
+    const userId = user?.id  // Use current logged-in user's ID
+    const patientId = (note.soap_data as any)?.patient_id || (note as any)?.patient_id
+    
+    if (!noteId || !userId || !patientId) {
+      console.log("Missing ICD codes params:", { noteId, userId, patientId })
+      setIcdCodes([])
+      return
+    }
+    
+    setIsLoadingIcdCodes(true)
+    try {
+      const response = await billingCodesApi.getICDCodes({
+        user_id: userId,
+        patient_id: patientId,
+        soap_note_id: noteId,
+      })
+      setIcdCodes(response.codes || [])
+    } catch (error: any) {
+      console.error("Failed to fetch ICD codes:", error)
+      setIcdCodes([])
+    } finally {
+      setIsLoadingIcdCodes(false)
+    }
+  }
+
   const handleViewNote = (note: SOAPNote) => {
     setSelectedNote(note)
     setIsViewModalOpen(true)
+    setIcdCodes([])
+    fetchIcdCodes(note)
   }
 
   const copyToClipboard = async (text: string) => {
@@ -613,18 +644,21 @@ export default function HistoryPage() {
                         <CardDescription>Diagnoses only — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        {Array.isArray((selectedNote as any)?.insurance_codes) && (selectedNote as any)?.insurance_codes.length > 0 ? (
+                        {isLoadingIcdCodes ? (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading ICD codes...
+                          </div>
+                        ) : icdCodes.length > 0 ? (
                           <div className="space-y-3">
-                            {((selectedNote as any).insurance_codes as Array<{ code: string; description?: string; match?: number }>).map((ic, idx) => (
+                            {icdCodes.map((ic, idx) => (
                               <div key={idx} className="flex items-center justify-between rounded border p-3">
                                 <div className="flex items-center gap-3">
                                   <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
                                   <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  {typeof ic.match === 'number' && (
-                                    <span className="text-xs rounded px-2 py-1 bg-green-100 text-green-700">{Math.round(ic.match)}% match</span>
-                                  )}
+                                  <Badge variant="outline" className="text-xs">{ic.code_type}</Badge>
                                   <Button variant="ghost" size="sm" onClick={() => copyToClipboard(ic.code)}>
                                     <Copy className="h-4 w-4" />
                                   </Button>

@@ -1148,3 +1148,48 @@ export async function fetchLatestUserForm(): Promise<any | null> {
 }
 
 
+
+
+// ---------- ICD Billing Codes API ----------
+
+export interface ICDBillingCodeItem {
+  soap_note_id: string;
+  health_report_id?: string;
+  code_type: string;
+  code: string;
+  description: string;
+}
+
+export interface ICDBillingCodeResponse {
+  id?: string;
+  user_id: string;
+  patient_id: string;
+  codes: ICDBillingCodeItem[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const billingCodesApi = {
+  async getICDCodes(payload: {
+    user_id: string;
+    patient_id: string;
+    soap_note_id: string;
+  }): Promise<ICDBillingCodeResponse> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    };
+
+    const response = await apiRequest<ICDBillingCodeResponse>("/billingcodes/icd", {
+      method: "POST",
+      data: payload,
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to fetch ICD billing codes");
+    }
+
+    return response.data!;
+  },
+};

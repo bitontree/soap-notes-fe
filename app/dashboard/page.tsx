@@ -9,19 +9,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye } from "lucide-react"
 import Link from "next/link"
-import { soapApi, getDashboardStats, type DashboardStats } from "@/lib/api" 
+import { soapApi, getDashboardStats, type DashboardStats, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api" 
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/auth-context"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 
 
 export default function DashboardPage() {
   const [recentNotes, setRecentNotes] = useState<any[]>([])
   const { toast } = useToast()
+  const { user } = useAuth()
   const [selectedNote, setSelectedNote] = useState<any | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [isExportingPDF, setIsExportingPDF] = useState(false)
   const [stats, setStats] = useState<DashboardStats>({ totalNotes: 0, thisWeek: 0, avgProcessingTimeMs: null, activePatients: 0, changes: {} })
   const [isStatsLoading, setIsStatsLoading] = useState<boolean>(true)
+  const [icdCodes, setIcdCodes] = useState<ICDBillingCodeItem[]>([])
+  const [isLoadingIcdCodes, setIsLoadingIcdCodes] = useState(false)
 
 
   useEffect(() => {
@@ -103,6 +107,40 @@ export default function DashboardPage() {
     } finally {
       setIsExportingPDF(false)
     }
+  }
+
+  const fetchIcdCodes = async (note: any) => {
+    const noteId = note?.id
+    const userId = user?.id  // Use current logged-in user's ID
+    const patientId = note?.soap_data?.patient_id || note?.patient_id
+    
+    if (!noteId || !userId || !patientId) {
+      console.log("Missing ICD codes params:", { noteId, userId, patientId })
+      setIcdCodes([])
+      return
+    }
+    
+    setIsLoadingIcdCodes(true)
+    try {
+      const response = await billingCodesApi.getICDCodes({
+        user_id: userId,
+        patient_id: patientId,
+        soap_note_id: noteId,
+      })
+      setIcdCodes(response.codes || [])
+    } catch (error: any) {
+      console.error("Failed to fetch ICD codes:", error)
+      setIcdCodes([])
+    } finally {
+      setIsLoadingIcdCodes(false)
+    }
+  }
+
+  const handleViewNote = (note: any) => {
+    setSelectedNote(note)
+    setIsViewModalOpen(true)
+    setIcdCodes([])
+    fetchIcdCodes(note)
   }
 
   return (
@@ -235,7 +273,7 @@ export default function DashboardPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => { setSelectedNote(note); setIsViewModalOpen(true) }}
+                        onClick={() => handleViewNote(note)}
                       >
                         <Eye className="mr-2 h-4 w-4" />
                         View
@@ -408,18 +446,21 @@ export default function DashboardPage() {
                         <CardDescription>Diagnoses only — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        {Array.isArray((selectedNote as any)?.insurance_codes) && (selectedNote as any)?.insurance_codes.length > 0 ? (
+                        {isLoadingIcdCodes ? (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading ICD codes...
+                          </div>
+                        ) : icdCodes.length > 0 ? (
                           <div className="space-y-3">
-                            {((selectedNote as any).insurance_codes as Array<{ code: string; description?: string; match?: number }>).map((ic, idx) => (
+                            {icdCodes.map((ic, idx) => (
                               <div key={idx} className="flex items-center justify-between rounded border p-3">
                                 <div className="flex items-center gap-3">
                                   <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
                                   <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  {typeof ic.match === 'number' && (
-                                    <span className="text-xs rounded px-2 py-1 bg-green-100 text-green-700">{Math.round(ic.match)}% match</span>
-                                  )}
+                                  <Badge variant="outline" className="text-xs">{ic.code_type}</Badge>
                                   <Button variant="ghost" size="sm" onClick={() => copyToClipboard(ic.code)}>
                                     <Copy className="h-4 w-4" />
                                   </Button>
