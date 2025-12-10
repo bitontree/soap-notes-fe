@@ -659,7 +659,7 @@ export default function HistoryPage() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <Badge variant="outline" className="text-xs">{ic.code_type}</Badge>
-                                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(ic.code)}>
+                                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}`)}>
                                     <Copy className="h-4 w-4" />
                                   </Button>
                                 </div>

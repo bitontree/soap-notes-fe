@@ -28,7 +28,7 @@ import {
   Pause,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { soapApi } from "@/lib/api"
+import { soapApi, type ICDBillingCodeItem } from "@/lib/api"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 import PatientSelector from "@/components/patient-selector" 
 import { useAuth } from "@/contexts/auth-context"
@@ -67,6 +67,7 @@ interface SOAPNote {
   summary: string
   speakers: Speaker[]
   diarized_transcript?: string
+  icdCodes?: ICDBillingCodeItem[]
 }
 
 // Formatting helper functions
@@ -195,7 +196,8 @@ export default function GeneratePage() {
           transcript: data.transcript || "",
           summary: data.summary || "",
           speakers: data.speakers || [],
-          diarized_transcript: data.diarized_transcript || "" 
+          diarized_transcript: data.diarized_transcript || "",
+          icdCodes: data.billing_codes?.codes || []
         })
       } else {
         toast({
@@ -687,10 +689,11 @@ export default function GeneratePage() {
             </div>
 
             <Tabs defaultValue="soap" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="soap">SOAP Note</TabsTrigger>
                 <TabsTrigger value="transcript">Transcript</TabsTrigger>
                 <TabsTrigger value="summary">Summary</TabsTrigger>
+                <TabsTrigger value="icd">ICD Codes</TabsTrigger>
               </TabsList>
 
               <TabsContent value="soap" className="space-y-4">
@@ -793,6 +796,39 @@ export default function GeneratePage() {
                     <div className="space-y-4">
                       <pre className="whitespace-pre-wrap text-gray-700">{soapNote.summary}</pre>
                     </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="icd">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>ICD-10 Disease Codes (Diagnoses)</CardTitle>
+                    <CardDescription>Diagnoses only — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {soapNote.icdCodes && soapNote.icdCodes.length > 0 ? (
+                      <div className="space-y-3">
+                        {soapNote.icdCodes.map((ic, idx) => (
+                          <div key={idx} className="flex items-center justify-between rounded border p-3">
+                            <div className="flex items-center gap-3">
+                              <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
+                              <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">{ic.code_type}</Badge>
+                              <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}`)}>
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-700">
+                        No ICD-10 diagnosis codes available for this note.
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>

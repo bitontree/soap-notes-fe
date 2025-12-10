@@ -474,6 +474,8 @@ export async function uploadHealthReportApi(
 }
 // Interface for /generate-soap-note response result
 export interface GenerateSoapNoteResponse {
+  id?: string;
+  message?: string;
   soap_data: {
     subjective: Record<string, any>;
     objective: Record<string, any>;
@@ -486,6 +488,9 @@ export interface GenerateSoapNoteResponse {
   summary?: string;
   speakers?: any[];
   diarized_transcript?: string;
+  s3_key?: string;
+  quota_remaining_seconds?: number;
+  billing_codes?: ICDBillingCodeResponse;
 }
 
 // ---------- Health Report Parse API (NEW) ----------
@@ -670,7 +675,17 @@ export const soapApi = {
         typeof response.data === "object" &&
         "result" in response.data
       ) {
-        return (response.data as { result: GenerateSoapNoteResponse }).result;
+        const data = response.data as any;
+        const result = data.result as GenerateSoapNoteResponse;
+        // billing_codes is at the top level, not inside result
+        return {
+          ...result,
+          id: data.id,
+          message: data.message,
+          s3_key: data.s3_key,
+          quota_remaining_seconds: data.quota_remaining_seconds,
+          billing_codes: data.billing_codes,
+        };
       }
 
       throw new Error("Invalid response from server: missing result");
