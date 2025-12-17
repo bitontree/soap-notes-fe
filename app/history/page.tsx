@@ -640,8 +640,8 @@ export default function HistoryPage() {
                   <TabsContent value="icd">
                     <Card>
                       <CardHeader>
-                        <CardTitle>ICD-10 Disease Codes (Diagnoses)</CardTitle>
-                        <CardDescription>Diagnoses only — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
+                        <CardTitle>ICD-10-CM Disease Codes </CardTitle>
+                        <CardDescription>Diagnoses and Symptoms — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
                       </CardHeader>
                       <CardContent>
                         {isLoadingIcdCodes ? (
@@ -650,22 +650,51 @@ export default function HistoryPage() {
                             Loading ICD codes...
                           </div>
                         ) : icdCodes.length > 0 ? (
-                          <div className="space-y-3">
-                            {icdCodes.map((ic, idx) => (
-                              <div key={idx} className="flex items-center justify-between rounded border p-3">
-                                <div className="flex items-center gap-3">
-                                  <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
-                                  <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="text-xs">{ic.code_type}</Badge>
-                                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}`)}>
-                                    <Copy className="h-4 w-4" />
-                                  </Button>
-                                </div>
+                          (() => {
+                            const diagnoses = icdCodes.filter(c => String(c.code_type || '').toLowerCase().includes('diagnos'))
+                            const symptoms = icdCodes.filter(c => String(c.code_type || '').toLowerCase().includes('symptom'))
+                            const others = icdCodes.filter(c => !diagnoses.includes(c) && !symptoms.includes(c))
+                            const renderList = (list: typeof icdCodes, label: string) => (
+                              <div className="space-y-3">
+                                {list.map((ic, idx) => (
+                                  <div key={idx} className="flex items-center justify-between rounded border p-3">
+                                    <div className="flex items-center gap-3">
+                                      <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
+                                      <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}`)}>
+                                        <Copy className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
+                            )
+
+                            return (
+                              <div className="space-y-4">
+                                {diagnoses.length > 0 && (
+                                  <div>
+                                    <h4 className="mb-2 font-medium">Diagnoses</h4>
+                                    {renderList(diagnoses, 'Diagnosis')}
+                                  </div>
+                                )}
+                                {symptoms.length > 0 && (
+                                  <div>
+                                    <h4 className="mb-2 font-medium">Symptoms</h4>
+                                    {renderList(symptoms, 'Symptoms')}
+                                  </div>
+                                )}
+                                {others.length > 0 && (
+                                  <div>
+                                    <h4 className="mb-2 font-medium">Other</h4>
+                                    {renderList(others, 'Other')}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()
                         ) : (
                           <div className="text-sm text-gray-700">
                             No ICD-10 diagnosis codes available for this note.
