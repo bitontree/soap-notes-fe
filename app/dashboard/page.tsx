@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye, ChevronLeft, ChevronRight } from "lucide-react"
+import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye, X, ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { soapApi, getDashboardStats, type DashboardStats, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api" 
 import { useToast } from "@/hooks/use-toast"
@@ -485,13 +485,25 @@ export default function DashboardPage() {
                       <CardContent>
                         {/* ICD Search Box */}
                         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                          <input
-                            value={icdQuery}
-                            onChange={(e) => setIcdQuery(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') { searchIcdCodes(icdQuery, 1, icdPageSize) } }}
-                            placeholder="Search ICD code or description (e.g. E11, diabetes, chest pain)"
-                            className="w-full sm:flex-1 rounded border px-3 py-2 text-sm"
-                          />
+                          <div className="relative w-full sm:flex-1">
+                            <input
+                              value={icdQuery}
+                              onChange={(e) => setIcdQuery(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { searchIcdCodes(icdQuery, 1, icdPageSize) } }}
+                              placeholder="Search ICD code or description (e.g. E11, diabetes, chest pain)"
+                              className="w-full rounded border px-3 py-2 text-sm pr-10"
+                            />
+                            {icdQuery && icdQuery.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setIcdQuery("")}
+                                aria-label="Clear search query"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
                           <div className="mt-2 sm:mt-0">
                             <Button size="sm" onClick={() => searchIcdCodes(icdQuery, 1, icdPageSize)} disabled={isSearchingIcd}>
                               {isSearchingIcd ? (
@@ -508,9 +520,19 @@ export default function DashboardPage() {
 
                         {/* Search results (if any) */}
                         {icdSearchResults && icdSearchResults.length > 0 && (
-                          <div className="mb-4 space-y-2">
-                            <h4 className="font-medium">Search Results</h4>
-                            <div className="space-y-2">
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium">Search Results</h4>
+                              <div className="text-sm text-gray-600">
+                                {(() => {
+                                  const start = icdSearchResults.length === 0 ? 0 : (icdPage - 1) * icdPageSize + 1
+                                  const end = (icdPage - 1) * icdPageSize + icdSearchResults.length
+                                  return `Showing ${start} - ${end}`
+                                })()}
+                              </div>
+                            </div>
+
+                            <div className="space-y-2 mt-2">
                               {icdSearchResults.map((r, idx) => (
                                 <div key={idx} className="flex items-center justify-between rounded border p-3">
                                   <div className="flex items-center gap-3">
@@ -529,25 +551,14 @@ export default function DashboardPage() {
                         )}
 
                           {icdSearchResults && icdSearchResults.length > 0 && (
-                            <div className="flex items-center justify-between gap-2 mb-4">
-                              <div className="flex items-center gap-2">
-                                <Button size="sm" onClick={() => searchIcdCodes(icdQuery, Math.max(1, icdPage - 1), icdPageSize)} disabled={icdPage <= 1 || isSearchingIcd} aria-label="Previous page">
-                                  <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <div className="text-sm text-gray-700">Page {icdPage}</div>
-                                <Button size="sm" onClick={() => searchIcdCodes(icdQuery, icdPage + 1, icdPageSize)} disabled={!icdHasMore || isSearchingIcd} aria-label="Next page">
-                                  <ChevronRight className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <label className="text-sm text-gray-600">Per page:</label>
-                                <select value={icdPageSize} onChange={(e) => { const v = parseInt(e.target.value || '10', 10); searchIcdCodes(icdQuery, 1, v) }} className="rounded border px-2 py-1 text-sm">
-                                  <option value={5}>5</option>
-                                  <option value={10}>10</option>
-                                  <option value={20}>20</option>
-                                  <option value={50}>50</option>
-                                </select>
-                              </div>
+                            <div className="flex items-center gap-2 mb-4">
+                              <Button size="sm" onClick={() => searchIcdCodes(icdQuery, Math.max(1, icdPage - 1), icdPageSize)} disabled={icdPage <= 1 || isSearchingIcd} aria-label="Previous page">
+                                <ChevronLeft className="h-4 w-4" />
+                              </Button>
+                              <div className="text-sm text-gray-700">Page {icdPage}</div>
+                              <Button size="sm" onClick={() => searchIcdCodes(icdQuery, icdPage + 1, icdPageSize)} disabled={!icdHasMore || isSearchingIcd} aria-label="Next page">
+                                <ChevronRight className="h-4 w-4" />
+                              </Button>
                             </div>
                           )}
 
