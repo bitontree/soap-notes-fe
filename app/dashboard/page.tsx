@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye } from "lucide-react"
+import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye, ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { soapApi, getDashboardStats, type DashboardStats, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api" 
 import { useToast } from "@/hooks/use-toast"
@@ -26,6 +26,13 @@ export default function DashboardPage() {
   const [isStatsLoading, setIsStatsLoading] = useState<boolean>(true)
   const [icdCodes, setIcdCodes] = useState<ICDBillingCodeItem[]>([])
   const [isLoadingIcdCodes, setIsLoadingIcdCodes] = useState(false)
+  // ICD search UI state
+  const [icdQuery, setIcdQuery] = useState<string>("")
+  const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string }>>([])
+  const [isSearchingIcd, setIsSearchingIcd] = useState<boolean>(false)
+  const [icdPage, setIcdPage] = useState<number>(1)
+  const [icdPageSize, setIcdPageSize] = useState<number>(10)
+  const [icdHasMore, setIcdHasMore] = useState<boolean>(false)
 
 
   useEffect(() => {
@@ -133,6 +140,36 @@ export default function DashboardPage() {
       setIcdCodes([])
     } finally {
       setIsLoadingIcdCodes(false)
+    }
+  }
+
+  const searchIcdCodes = async (q?: string, page?: number, limit?: number) => {
+    const query = (q ?? icdQuery ?? "").trim()
+    if (!query) {
+      setIcdSearchResults([])
+      setIcdHasMore(false)
+      return
+    }
+
+    // Allow caller to override page/limit; fall back to state
+    const pageToUse = page ?? icdPage ?? 1
+    const limitToUse = limit ?? icdPageSize ?? 10
+
+    setIsSearchingIcd(true)
+    try {
+      const results = await billingCodesApi.searchCodes(query, pageToUse, limitToUse)
+      setIcdSearchResults(results || [])
+      setIcdPage(pageToUse)
+      setIcdPageSize(limitToUse)
+      // If backend returned a full page, assume there may be more results
+      setIcdHasMore((results?.length ?? 0) >= limitToUse)
+    } catch (error: any) {
+      console.error("ICD search failed:", error)
+      toast({ title: "Search failed", description: error?.message || "Failed to search ICD codes", variant: "destructive" })
+      setIcdSearchResults([])
+      setIcdHasMore(false)
+    } finally {
+      setIsSearchingIcd(false)
     }
   }
 
@@ -446,6 +483,74 @@ export default function DashboardPage() {
                         <CardDescription>Diagnoses and Symptoms — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
                       </CardHeader>
                       <CardContent>
+                        {/* ICD Search Box */}
+                        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                          <input
+                            value={icdQuery}
+                            onChange={(e) => setIcdQuery(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { searchIcdCodes(icdQuery, 1, icdPageSize) } }}
+                            placeholder="Search ICD code or description (e.g. E11, diabetes, chest pain)"
+                            className="w-full sm:flex-1 rounded border px-3 py-2 text-sm"
+                          />
+                          <div className="mt-2 sm:mt-0">
+                            <Button size="sm" onClick={() => searchIcdCodes(icdQuery, 1, icdPageSize)} disabled={isSearchingIcd}>
+                              {isSearchingIcd ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Searching...
+                                </>
+                              ) : (
+                                <>Search</>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Search results (if any) */}
+                        {icdSearchResults && icdSearchResults.length > 0 && (
+                          <div className="mb-4 space-y-2">
+                            <h4 className="font-medium">Search Results</h4>
+                            <div className="space-y-2">
+                              {icdSearchResults.map((r, idx) => (
+                                <div key={idx} className="flex items-center justify-between rounded border p-3">
+                                  <div className="flex items-center gap-3">
+                                    <Badge variant="secondary" className="font-mono">{r.code}</Badge>
+                                    <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${r.code} - ${r.description || ''}`)}>
+                                      <Copy className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                          {icdSearchResults && icdSearchResults.length > 0 && (
+                            <div className="flex items-center justify-between gap-2 mb-4">
+                              <div className="flex items-center gap-2">
+                                <Button size="sm" onClick={() => searchIcdCodes(icdQuery, Math.max(1, icdPage - 1), icdPageSize)} disabled={icdPage <= 1 || isSearchingIcd} aria-label="Previous page">
+                                  <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <div className="text-sm text-gray-700">Page {icdPage}</div>
+                                <Button size="sm" onClick={() => searchIcdCodes(icdQuery, icdPage + 1, icdPageSize)} disabled={!icdHasMore || isSearchingIcd} aria-label="Next page">
+                                  <ChevronRight className="h-4 w-4" />
+                                </Button>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <label className="text-sm text-gray-600">Per page:</label>
+                                <select value={icdPageSize} onChange={(e) => { const v = parseInt(e.target.value || '10', 10); searchIcdCodes(icdQuery, 1, v) }} className="rounded border px-2 py-1 text-sm">
+                                  <option value={5}>5</option>
+                                  <option value={10}>10</option>
+                                  <option value={20}>20</option>
+                                  <option value={50}>50</option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
+
                         {isLoadingIcdCodes ? (
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <Loader2 className="h-4 w-4 animate-spin" />

@@ -1207,4 +1207,37 @@ export const billingCodesApi = {
 
     return response.data!;
   },
+  
+  // Search ICD codes by free text or code token. Calls backend /billingcodes/codes
+  async searchCodes(q: string, page: number = 1, limit: number = 5): Promise<Array<{ code?: string; description?: string }>> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+
+    const response = await apiRequest<any>(`/billingcodes/codes`, {
+      method: "POST",
+      data: { q, page, limit },
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to search ICD codes");
+    }
+
+    // Backend returns a list of SearchResult objects (code, description).
+    // Normalize to array of simple objects.
+    const data = response.data || [];
+    if (Array.isArray(data)) {
+      return data.map((it: any) => ({ code: it.code, description: it.description }));
+    }
+
+    // If wrapped under { results: [...] }
+    if (data && Array.isArray(data.results)) {
+      return data.results.map((it: any) => ({ code: it.code, description: it.description }));
+    }
+
+    return [];
+  }
 };
