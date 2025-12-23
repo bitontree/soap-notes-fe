@@ -182,7 +182,7 @@ export default function HealthReportPage() {
 
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* PDF Upload */}
+            {/* PDF Upload */}  
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

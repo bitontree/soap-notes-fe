@@ -51,6 +51,8 @@ export default function HistoryPage() {
   const [isExportingPDF, setIsExportingPDF] = useState(false)
   const [icdCodes, setIcdCodes] = useState<ICDBillingCodeItem[]>([])
   const [isLoadingIcdCodes, setIsLoadingIcdCodes] = useState(false)
+  const [selectedIcdCodesSet, setSelectedIcdCodesSet] = useState<Set<string>>(new Set())
+  const [icdOriginalSelection, setIcdOriginalSelection] = useState<string[]>([])
   // ICD search UI state for modal
   const [icdQuery, setIcdQuery] = useState<string>("")
   const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string }>>([])
@@ -245,7 +247,11 @@ export default function HistoryPage() {
         patient_id: patientId,
         soap_note_id: noteId,
       })
-      setIcdCodes(response.codes || [])
+      const codes = response.codes || []
+      setIcdCodes(codes)
+      const codeKeys = (codes || []).map((c: any) => String(c.code || ""))
+      setSelectedIcdCodesSet(new Set(codeKeys))
+      setIcdOriginalSelection(codeKeys)
     } catch (error: any) {
       console.error("Failed to fetch ICD codes:", error)
       setIcdCodes([])
@@ -258,7 +264,31 @@ export default function HistoryPage() {
     setSelectedNote(note)
     setIsViewModalOpen(true)
     setIcdCodes([])
+    setSelectedIcdCodesSet(new Set())
+    setIcdOriginalSelection([])
     fetchIcdCodes(note)
+  }
+
+  const toggleIcdSelection = (code?: string) => {
+    if (!code) return
+    setSelectedIcdCodesSet((prev) => {
+      const next = new Set(Array.from(prev))
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }
+
+  const handleSaveIcdSelection = () => {
+    // For now, just log selection. Persistence will be implemented later.
+    const selected = Array.from(selectedIcdCodesSet)
+    console.log('Saving ICD selection for note', selectedNote?.id, selected)
+    setIsViewModalOpen(false)
+  }
+
+  const handleCancelIcdSelection = () => {
+    setSelectedIcdCodesSet(new Set(icdOriginalSelection))
+    setIsViewModalOpen(false)
   }
 
   // ICD search implementation for history modal
@@ -729,6 +759,12 @@ export default function HistoryPage() {
                               {icdSearchResults.map((r, idx) => (
                                 <div key={idx} className="flex items-center justify-between rounded border p-3">
                                   <div className="flex items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedIcdCodesSet.has(String(r.code || ""))}
+                                      onChange={() => toggleIcdSelection(String(r.code || ""))}
+                                      className="h-4 w-4"
+                                    />
                                     <Badge variant="secondary" className="font-mono">{r.code}</Badge>
                                     <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
                                   </div>
@@ -768,6 +804,12 @@ export default function HistoryPage() {
                                 {list.map((ic, idx) => (
                                   <div key={idx} className="flex items-center justify-between rounded border p-3">
                                     <div className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedIcdCodesSet.has(String(ic.code || ""))}
+                                        onChange={() => toggleIcdSelection(String(ic.code || ""))}
+                                        className="h-4 w-4"
+                                      />
                                       <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
                                       <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
                                     </div>
@@ -809,7 +851,11 @@ export default function HistoryPage() {
                             No ICD-10 diagnosis codes available for this note.
                           </div>
                         )}
-                      </CardContent>
+                        </CardContent>
+                        <div className="flex items-center justify-end gap-2 px-6 pb-6">
+                          <Button variant="outline" onClick={handleCancelIcdSelection}>Cancel</Button>
+                          <Button onClick={handleSaveIcdSelection}>Save</Button>
+                        </div>
                     </Card>
                   </TabsContent>
                 </Tabs>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -122,6 +122,8 @@ export default function GeneratePage() {
   const [icdPage, setIcdPage] = useState<number>(1)
   const [icdPageSize, setIcdPageSize] = useState<number>(10)
   const [icdHasMore, setIcdHasMore] = useState<boolean>(false)
+  const [selectedIcdCodesSet, setSelectedIcdCodesSet] = useState<Set<string>>(new Set())
+  const [icdOriginalSelection, setIcdOriginalSelection] = useState<string[]>([])
   
   // Refs for audio recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -210,6 +212,10 @@ export default function GeneratePage() {
           diarized_transcript: data.diarized_transcript || "",
           icdCodes: data.billing_codes?.codes || []
         })
+        // initialize selection to returned codes
+        const returned = (data.billing_codes?.codes || []).map((c:any) => String(c.code || ""))
+        setSelectedIcdCodesSet(new Set(returned))
+        setIcdOriginalSelection(returned)
       } else {
         toast({
           title: "Invalid Response",
@@ -240,6 +246,39 @@ export default function GeneratePage() {
       // Clean up local files even on error
       cleanupLocalFiles()
     }
+  }
+
+  // Keep selection state in sync if soapNote.icdCodes changes elsewhere
+  useEffect(() => {
+    if (!soapNote) return
+    const codes = (soapNote.icdCodes || []).map((c:any) => String(c.code || ""))
+    setSelectedIcdCodesSet(new Set(codes))
+    setIcdOriginalSelection(codes)
+  }, [soapNote?.icdCodes])
+
+  const toggleIcdSelection = (code?: string) => {
+    if (!code) return
+    setSelectedIcdCodesSet((prev) => {
+      const next = new Set(Array.from(prev))
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }
+
+  const handleSaveIcdSelection = () => {
+    if (!soapNote) return
+    const selected = Array.from(selectedIcdCodesSet)
+    // filter existing items to those selected
+    const newList = (soapNote.icdCodes || []).filter((c:any) => selected.includes(String(c.code || "")))
+    setSOAPNote({ ...soapNote, icdCodes: newList })
+    setIcdOriginalSelection(selected)
+    console.log('Saved ICD selection', selected)
+  }
+
+  const handleCancelIcdSelection = () => {
+    setSelectedIcdCodesSet(new Set(icdOriginalSelection))
+    console.log('Cancelled ICD selection')
   }
 
   const copyToClipboard = (textOrObj: string | object) => {
@@ -896,6 +935,12 @@ export default function GeneratePage() {
                           {icdSearchResults.map((r, idx) => (
                             <div key={idx} className="flex items-center justify-between rounded border p-3">
                               <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedIcdCodesSet.has(String(r.code || ""))}
+                                  onChange={() => toggleIcdSelection(String(r.code || ""))}
+                                  className="h-4 w-4"
+                                />
                                 <Badge variant="secondary" className="font-mono">{r.code}</Badge>
                                 <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
                               </div>
@@ -931,6 +976,12 @@ export default function GeneratePage() {
                             {list.map((ic, idx) => (
                               <div key={idx} className="flex items-center justify-between rounded border p-3">
                                 <div className="flex items-center gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedIcdCodesSet.has(String(ic.code || ""))}
+                                    onChange={() => toggleIcdSelection(String(ic.code || ""))}
+                                    className="h-4 w-4"
+                                  />
                                   <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
                                   <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
                                 </div>
@@ -964,6 +1015,10 @@ export default function GeneratePage() {
                                 {renderList(others, 'Other')}
                               </div>
                             )}
+                            <div className="flex items-center justify-end gap-2 px-6">
+                              <Button variant="outline" onClick={handleCancelIcdSelection}>Cancel</Button>
+                              <Button onClick={handleSaveIcdSelection}>Save</Button>
+                            </div>
                           </div>
                         )
                       })()
