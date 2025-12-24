@@ -72,7 +72,6 @@ export default function DashboardPage() {
     fetchStats()
   }, [toast])
 
-  // Formatting helpers (match history page behavior)
   const formatSubjective = (subjective: any): string => {
     if (!subjective) return ""
     if (typeof subjective === 'string') return subjective
@@ -157,7 +156,6 @@ export default function DashboardPage() {
       return
     }
 
-    // Allow caller to override page/limit; fall back to state
     const pageToUse = page ?? icdPage ?? 1
     const limitToUse = limit ?? icdPageSize ?? 10
 
@@ -167,7 +165,6 @@ export default function DashboardPage() {
       setIcdSearchResults(results || [])
       setIcdPage(pageToUse)
       setIcdPageSize(limitToUse)
-      // If backend returned a full page, assume there may be more results
       setIcdHasMore((results?.length ?? 0) >= limitToUse)
     } catch (error: any) {
       console.error("ICD search failed:", error)
@@ -227,10 +224,6 @@ export default function DashboardPage() {
                 {isStatsLoading ? '—' : (stats.changes?.totalNotesPct != null ? `${stats.changes.totalNotesPct > 0 ? '+' : ''}${stats.changes.totalNotesPct}% from last month` : 'Updated now')}
               </div>
             </CardContent>
-                      <div className="flex items-center justify-end gap-2 px-6 pb-6">
-                        <Button variant="outline" onClick={handleCancelIcdSelection}>Cancel</Button>
-                        <Button onClick={handleSaveIcdSelection}>Save</Button>
-                      </div>
           </Card>
 
           <Card>
@@ -663,6 +656,12 @@ export default function DashboardPage() {
                             No ICD-10 diagnosis codes available for this note.
                           </div>
                         )}
+
+                        <div className="flex items-center justify-end gap-2 mt-4">
+                          <Button variant="outline" onClick={handleCancelIcdSelection}>Cancel</Button>
+                          <Button onClick={handleSaveIcdSelection}>Save</Button>
+                        </div>
+
                       </CardContent>
                     </Card>
                   </TabsContent>
