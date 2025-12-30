@@ -474,6 +474,8 @@ export async function uploadHealthReportApi(
 }
 // Interface for /generate-soap-note response result
 export interface GenerateSoapNoteResponse {
+  id?: string;
+  message?: string;
   soap_data: {
     subjective: Record<string, any>;
     objective: Record<string, any>;
@@ -486,6 +488,9 @@ export interface GenerateSoapNoteResponse {
   summary?: string;
   speakers?: any[];
   diarized_transcript?: string;
+  s3_key?: string;
+  quota_remaining_seconds?: number;
+  billing_codes?: ICDBillingCodeResponse;
 }
 
 // ---------- Health Report Parse API (NEW) ----------
@@ -670,7 +675,17 @@ export const soapApi = {
         typeof response.data === "object" &&
         "result" in response.data
       ) {
-        return (response.data as { result: GenerateSoapNoteResponse }).result;
+        const data = response.data as any;
+        const result = data.result as GenerateSoapNoteResponse;
+        // billing_codes is at the top level, not inside result
+        return {
+          ...result,
+          id: data.id,
+          message: data.message,
+          s3_key: data.s3_key,
+          quota_remaining_seconds: data.quota_remaining_seconds,
+          billing_codes: data.billing_codes,
+        };
       }
 
       throw new Error("Invalid response from server: missing result");
@@ -1202,3 +1217,81 @@ export async function fetchLatestUserForm(): Promise<any | null> {
 }
 
 
+
+
+// ---------- ICD Billing Codes API ----------
+
+export interface ICDBillingCodeItem {
+  soap_note_id: string;
+  health_report_id?: string;
+  code_type: string;
+  code: string;
+  description: string;
+}
+
+export interface ICDBillingCodeResponse {
+  id?: string;
+  user_id: string;
+  patient_id: string;
+  codes: ICDBillingCodeItem[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const billingCodesApi = {
+  async getICDCodes(payload: {
+    user_id: string;
+    patient_id: string;
+    soap_note_id: string;
+  }): Promise<ICDBillingCodeResponse> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    };
+
+    const response = await apiRequest<ICDBillingCodeResponse>("/billingcodes/icd", {
+      method: "POST",
+      data: payload,
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to fetch ICD billing codes");
+    }
+
+    return response.data!;
+  },
+  
+  // Search ICD codes by free text or code token. Calls backend /billingcodes/codes
+  async searchCodes(q: string, page: number = 1, limit: number = 5): Promise<Array<{ code?: string; description?: string }>> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+
+    const response = await apiRequest<any>(`/billingcodes/codes`, {
+      method: "POST",
+      data: { q, page, limit },
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to search ICD codes");
+    }
+
+    // Backend returns a list of SearchResult objects (code, description).
+    // Normalize to array of simple objects.
+    const data = response.data || [];
+    if (Array.isArray(data)) {
+      return data.map((it: any) => ({ code: it.code, description: it.description }));
+    }
+
+    // If wrapped under { results: [...] }
+    if (data && Array.isArray(data.results)) {
+      return data.results.map((it: any) => ({ code: it.code, description: it.description }));
+    }
+
+    return [];
+  }
+};

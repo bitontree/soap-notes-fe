@@ -7,21 +7,34 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye } from "lucide-react"
+import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye, X, ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
-import { soapApi, getDashboardStats, type DashboardStats } from "@/lib/api" 
+import { soapApi, getDashboardStats, type DashboardStats, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api" 
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/auth-context"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 
 
 export default function DashboardPage() {
   const [recentNotes, setRecentNotes] = useState<any[]>([])
   const { toast } = useToast()
+  const { user } = useAuth()
   const [selectedNote, setSelectedNote] = useState<any | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [isExportingPDF, setIsExportingPDF] = useState(false)
   const [stats, setStats] = useState<DashboardStats>({ totalNotes: 0, thisWeek: 0, avgProcessingTimeMs: null, activePatients: 0, changes: {} })
   const [isStatsLoading, setIsStatsLoading] = useState<boolean>(true)
+  const [icdCodes, setIcdCodes] = useState<ICDBillingCodeItem[]>([])
+  const [isLoadingIcdCodes, setIsLoadingIcdCodes] = useState(false)
+  const [selectedIcdCodesSet, setSelectedIcdCodesSet] = useState<Set<string>>(new Set())
+  const [icdOriginalSelection, setIcdOriginalSelection] = useState<string[]>([])
+  // ICD search UI state
+  const [icdQuery, setIcdQuery] = useState<string>("")
+  const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string }>>([])
+  const [isSearchingIcd, setIsSearchingIcd] = useState<boolean>(false)
+  const [icdPage, setIcdPage] = useState<number>(1)
+  const [icdPageSize, setIcdPageSize] = useState<number>(10)
+  const [icdHasMore, setIcdHasMore] = useState<boolean>(false)
 
 
   useEffect(() => {
@@ -59,7 +72,6 @@ export default function DashboardPage() {
     fetchStats()
   }, [toast])
 
-  // Formatting helpers (match history page behavior)
   const formatSubjective = (subjective: any): string => {
     if (!subjective) return ""
     if (typeof subjective === 'string') return subjective
@@ -103,6 +115,95 @@ export default function DashboardPage() {
     } finally {
       setIsExportingPDF(false)
     }
+  }
+
+  const fetchIcdCodes = async (note: any) => {
+    const noteId = note?.id
+    const userId = user?.id  // Use current logged-in user's ID
+    const patientId = note?.soap_data?.patient_id || note?.patient_id
+    
+    if (!noteId || !userId || !patientId) {
+      console.log("Missing ICD codes params:", { noteId, userId, patientId })
+      setIcdCodes([])
+      return
+    }
+    
+    setIsLoadingIcdCodes(true)
+    try {
+      const response = await billingCodesApi.getICDCodes({
+        user_id: userId,
+        patient_id: patientId,
+        soap_note_id: noteId,
+      })
+      const codes = response.codes || []
+      setIcdCodes(codes)
+      const codeKeys = (codes || []).map((c: any) => String(c.code || ""))
+      setSelectedIcdCodesSet(new Set(codeKeys))
+      setIcdOriginalSelection(codeKeys)
+    } catch (error: any) {
+      console.error("Failed to fetch ICD codes:", error)
+      setIcdCodes([])
+    } finally {
+      setIsLoadingIcdCodes(false)
+    }
+  }
+
+  const searchIcdCodes = async (q?: string, page?: number, limit?: number) => {
+    const query = (q ?? icdQuery ?? "").trim()
+    if (!query) {
+      setIcdSearchResults([])
+      setIcdHasMore(false)
+      return
+    }
+
+    const pageToUse = page ?? icdPage ?? 1
+    const limitToUse = limit ?? icdPageSize ?? 10
+
+    setIsSearchingIcd(true)
+    try {
+      const results = await billingCodesApi.searchCodes(query, pageToUse, limitToUse)
+      setIcdSearchResults(results || [])
+      setIcdPage(pageToUse)
+      setIcdPageSize(limitToUse)
+      setIcdHasMore((results?.length ?? 0) >= limitToUse)
+    } catch (error: any) {
+      console.error("ICD search failed:", error)
+      toast({ title: "Search failed", description: error?.message || "Failed to search ICD codes", variant: "destructive" })
+      setIcdSearchResults([])
+      setIcdHasMore(false)
+    } finally {
+      setIsSearchingIcd(false)
+    }
+  }
+
+  const handleViewNote = (note: any) => {
+    setSelectedNote(note)
+    setIsViewModalOpen(true)
+    setIcdCodes([])
+    setSelectedIcdCodesSet(new Set())
+    setIcdOriginalSelection([])
+    fetchIcdCodes(note)
+  }
+
+  const toggleIcdSelection = (code?: string) => {
+    if (!code) return
+    setSelectedIcdCodesSet((prev) => {
+      const next = new Set(Array.from(prev))
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }
+
+  const handleSaveIcdSelection = () => {
+    const selected = Array.from(selectedIcdCodesSet)
+    console.log('Saving ICD selection for note', selectedNote?.id, selected)
+    setIsViewModalOpen(false)
+  }
+
+  const handleCancelIcdSelection = () => {
+    setSelectedIcdCodesSet(new Set(icdOriginalSelection))
+    setIsViewModalOpen(false)
   }
 
   return (
@@ -235,7 +336,7 @@ export default function DashboardPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => { setSelectedNote(note); setIsViewModalOpen(true) }}
+                        onClick={() => handleViewNote(note)}
                       >
                         <Eye className="mr-2 h-4 w-4" />
                         View
@@ -293,10 +394,11 @@ export default function DashboardPage() {
                 </div>
 
                 <Tabs defaultValue="soap" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="soap">SOAP Note</TabsTrigger>
                     <TabsTrigger value="transcript">Transcript</TabsTrigger>
                     <TabsTrigger value="summary">Summary</TabsTrigger>
+                    <TabsTrigger value="icd">ICD Codes</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="soap" className="space-y-4">
@@ -395,6 +497,171 @@ export default function DashboardPage() {
                         <div className="space-y-4">
                           <pre className="whitespace-pre-wrap text-gray-700">{selectedNote.summary || 'No summary available'}</pre>
                         </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* ICD-10 Disease & Injury Codes (Diagnoses) */}
+                  <TabsContent value="icd">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>ICD-10-CM Disease Codes </CardTitle>
+                        <CardDescription>Diagnoses and Symptoms — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {/* ICD Search Box */}
+                        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                          <div className="relative w-full sm:flex-1">
+                            <input
+                              value={icdQuery}
+                              onChange={(e) => setIcdQuery(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { searchIcdCodes(icdQuery, 1, icdPageSize) } }}
+                              placeholder="Search ICD code or description (e.g. E11, diabetes, chest pain)"
+                              className="w-full rounded border px-3 py-2 text-sm pr-10"
+                            />
+                            {icdQuery && icdQuery.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setIcdQuery("")}
+                                aria-label="Clear search query"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-2 sm:mt-0">
+                            <Button size="sm" onClick={() => searchIcdCodes(icdQuery, 1, icdPageSize)} disabled={isSearchingIcd}>
+                              {isSearchingIcd ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Searching...
+                                </>
+                              ) : (
+                                <>Search</>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Search results (if any) */}
+                        {icdSearchResults && icdSearchResults.length > 0 && (
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium">Search Results</h4>
+                              <div className="text-sm text-gray-600">
+                                {(() => {
+                                  const start = icdSearchResults.length === 0 ? 0 : (icdPage - 1) * icdPageSize + 1
+                                  const end = (icdPage - 1) * icdPageSize + icdSearchResults.length
+                                  return `Showing ${start} - ${end}`
+                                })()}
+                              </div>
+                            </div>
+
+                            <div className="space-y-2 mt-2">
+                              {icdSearchResults.map((r, idx) => (
+                                <div key={idx} className="flex items-center justify-between rounded border p-3">
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedIcdCodesSet.has(String(r.code || ""))}
+                                      onChange={() => toggleIcdSelection(String(r.code || ""))}
+                                      className="h-4 w-4"
+                                    />
+                                    <Badge variant="secondary" className="font-mono">{r.code}</Badge>
+                                    <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${r.code} - ${r.description || ''}`)}>
+                                      <Copy className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                          {icdSearchResults && icdSearchResults.length > 0 && (
+                            <div className="flex items-center gap-2 mb-4">
+                              <Button size="sm" onClick={() => searchIcdCodes(icdQuery, Math.max(1, icdPage - 1), icdPageSize)} disabled={icdPage <= 1 || isSearchingIcd} aria-label="Previous page">
+                                <ChevronLeft className="h-4 w-4" />
+                              </Button>
+                              <div className="text-sm text-gray-700">Page {icdPage}</div>
+                              <Button size="sm" onClick={() => searchIcdCodes(icdQuery, icdPage + 1, icdPageSize)} disabled={!icdHasMore || isSearchingIcd} aria-label="Next page">
+                                <ChevronRight className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+
+                        {isLoadingIcdCodes ? (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading ICD codes...
+                          </div>
+                        ) : icdCodes.length > 0 ? (
+                          (() => {
+                            const diagnoses = icdCodes.filter(c => String(c.code_type || '').toLowerCase().includes('diagnos'))
+                            const symptoms = icdCodes.filter(c => String(c.code_type || '').toLowerCase().includes('symptom'))
+                            const others = icdCodes.filter(c => !diagnoses.includes(c) && !symptoms.includes(c))
+                            const renderList = (list: typeof icdCodes, label: string) => (
+                              <div className="space-y-3">
+                                {list.map((ic, idx) => (
+                                  <div key={idx} className="flex items-center justify-between rounded border p-3">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedIcdCodesSet.has(String(ic.code || ""))}
+                                        onChange={() => toggleIcdSelection(String(ic.code || ""))}
+                                        className="h-4 w-4"
+                                      />
+                                      <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
+                                      <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}`)}>
+                                        <Copy className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+
+                            return (
+                              <div className="space-y-4">
+                                {diagnoses.length > 0 && (
+                                  <div>
+                                    <h4 className="mb-2 font-medium">Diagnoses</h4>
+                                    {renderList(diagnoses, 'Diagnosis')}
+                                  </div>
+                                )}
+                                {symptoms.length > 0 && (
+                                  <div>
+                                    <h4 className="mb-2 font-medium">Symptoms</h4>
+                                    {renderList(symptoms, 'Symptoms')}
+                                  </div>
+                                )}
+                                {others.length > 0 && (
+                                  <div>
+                                    <h4 className="mb-2 font-medium">Other</h4>
+                                    {renderList(others, 'Other')}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()
+                        ) : (
+                          <div className="text-sm text-gray-700">
+                            No ICD-10 diagnosis codes available for this note.
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2 mt-4">
+                          <Button variant="outline" onClick={handleCancelIcdSelection}>Cancel</Button>
+                          <Button onClick={handleSaveIcdSelection}>Save</Button>
+                        </div>
+
                       </CardContent>
                     </Card>
                   </TabsContent>
