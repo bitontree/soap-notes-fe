@@ -78,10 +78,11 @@ export default function EHRPage() {
   }
 
   return (
-    <div>
+    <div className="flex flex-col h-full">
       <Header title="EHR Integration" description="Generate SOAP notes from existing Electronic Health Record data" />
 
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <div className="flex-1 overflow-auto">
+        <div className="p-6 max-w-4xl mx-auto space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Integration Status */}
           <Card>
@@ -343,6 +344,7 @@ export default function EHRPage() {
             </div>
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   )

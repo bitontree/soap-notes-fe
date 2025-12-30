@@ -190,7 +190,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
           type="text"
           value={question.label}
           onChange={(e) => onUpdate(question.id, { label: e.target.value })}
-          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
         />
       </div>
 
@@ -201,7 +201,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
             type="text"
             value={question.placeholder || ""}
             onChange={(e) => onUpdate(question.id, { placeholder: e.target.value })}
-            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
           />
         </div>
       )}
@@ -214,7 +214,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
               type="text"
               value={question.placeholder || ""}
               onChange={(e) => onUpdate(question.id, { placeholder: e.target.value })}
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             />
           </div>
           <div className="grid grid-cols-2 gap-2 mb-3">
@@ -224,7 +224,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
                 type="number"
                 value={question.min || ""}
                 onChange={(e) => onUpdate(question.id, { min: e.target.value ? Number(e.target.value) : undefined })}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
             <div>
@@ -233,7 +233,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
                 type="number"
                 value={question.max || ""}
                 onChange={(e) => onUpdate(question.id, { max: e.target.value ? Number(e.target.value) : undefined })}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
           </div>
@@ -247,7 +247,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
             type="number"
             value={question.rows || 4}
             onChange={(e) => onUpdate(question.id, { rows: Number(e.target.value) })}
-            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             min="2"
             max="10"
           />
@@ -261,7 +261,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
             type="text"
             value={question.placeholder || "dd/mm/yy"}
             onChange={(e) => onUpdate(question.id, { placeholder: e.target.value })}
-            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
           />
         </div>
       )}
@@ -273,7 +273,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
             type="text"
             value={question.accept || ""}
             onChange={(e) => onUpdate(question.id, { accept: e.target.value })}
-            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             placeholder="e.g., .pdf,.doc,.jpg"
           />
         </div>
@@ -287,7 +287,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
               type="number"
               value={question.maxRating || 5}
               onChange={(e) => onUpdate(question.id, { maxRating: Number(e.target.value) })}
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               min="3"
               max="10"
             />
@@ -297,7 +297,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
             <select
               value={question.scale || "numeric"}
               onChange={(e) => onUpdate(question.id, { scale: e.target.value })}
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             >
               <option value="numeric">Numeric (1-{question.maxRating || 5})</option>
               <option value="stars">Stars</option>
@@ -318,7 +318,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
                   type="text"
                   value={option.label}
                   onChange={(e) => handleOptionChange(idx, e.target.value)}
-                  className="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 />
                 <button
                   type="button"
@@ -336,7 +336,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
           <div className="flex gap-2 mt-2">
             <input
               type="text"
-              className="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               placeholder="Add new option"
               value={newOptionLabel}
               onChange={(e) => setNewOptionLabel(e.target.value)}
@@ -350,7 +350,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ question, onUpdate, onD
             <button
               type="button"
               onClick={addOption}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium transition-colors"
+              className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-medium transition-colors"
             >
               Add
             </button>
@@ -479,7 +479,7 @@ const FormPreview: React.FC<{
                       placeholder={question.placeholder}
                       required={question.required}
                       maxLength={question.maxLength}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     />
                   )}
                   
@@ -490,7 +490,7 @@ const FormPreview: React.FC<{
                       required={question.required}
                       rows={question.rows || 4}
                       maxLength={question.maxLength}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-vertical"
                     />
                   )}
                   
@@ -502,7 +502,7 @@ const FormPreview: React.FC<{
                       required={question.required}
                       min={question.min}
                       max={question.max}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     />
                   )}
                   
@@ -519,7 +519,7 @@ const FormPreview: React.FC<{
                     <select
                       name={question.id}
                       required={question.required}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     >
                       <option value="">Select an option...</option>
                       {question.options?.map((option, idx) => (
@@ -539,7 +539,7 @@ const FormPreview: React.FC<{
                             name={question.id}
                             value={option.value}
                             required={question.required}
-                            className="w-4 h-4 text-blue-600"
+                            className="w-4 h-4 text-emerald-600"
                           />
                           <span className="text-gray-700">{option.label}</span>
                         </label>
@@ -555,7 +555,7 @@ const FormPreview: React.FC<{
                             type="checkbox"
                             name={`${question.id}[]`}
                             value={option.value}
-                            className="w-4 h-4 text-blue-600 rounded"
+                            className="w-4 h-4 text-emerald-600 rounded"
                           />
                           <span className="text-gray-700">{option.label}</span>
                         </label>
@@ -569,7 +569,7 @@ const FormPreview: React.FC<{
                       name={question.id}
                       accept={question.accept}
                       required={question.required}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
                     />
                   )}
                   
@@ -631,10 +631,10 @@ const QuestionTypesDrawer: React.FC<{
           <div className="flex-1 overflow-y-auto p-6">
             <div className="space-y-4">
               {questionTypes.map((type) => (
-                <div key={type.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                <div key={type.id} className="border border-gray-200 rounded-lg p-4 hover:border-emerald-300 transition-colors">
                   <div className="flex items-start gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <type.icon size={20} className="text-blue-600" />
+                    <div className="p-2 bg-emerald-100 rounded-lg">
+                      <type.icon size={20} className="text-emerald-600" />
                     </div>
                     <div className="flex-1">
                       <h4 className="font-semibold text-gray-900">{type.label}</h4>
@@ -650,7 +650,7 @@ const QuestionTypesDrawer: React.FC<{
                               onAddQuestion(section.id, type.id);
                               onClose();
                             }}
-                            className="w-full text-left text-sm bg-gray-50 hover:bg-blue-50 text-gray-700 hover:text-blue-700 px-3 py-2 rounded border hover:border-blue-300 transition-colors"
+                            className="w-full text-left text-sm bg-gray-50 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 px-3 py-2 rounded border hover:border-emerald-300 transition-colors"
                           >
                             {section.name}
                           </button>
@@ -924,56 +924,55 @@ const PhysicianFormBuilder: React.FC = () => {
   };
   
   return (
-    <div className="min-h-screen bg-gray-50">
-      
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Stethoscope className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Physician Form Builder</h1>
-                <p className="text-sm text-gray-600">Create custom medical forms with ease</p>
-              </div>
+    <div className="flex flex-col h-full">
+      {/* Header matching site theme */}
+      <div className="bg-white border-b border-gray-300 px-6 py-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <Stethoscope className="w-6 h-6 text-emerald-600" />
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setQuestionTypeDrawerOpen(true)}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium transition-colors"
-              >
-                <Plus size={18} />
-                Add Question
-              </button>
-              <button
-                onClick={() => setPreviewMode(!previewMode)}
-                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-medium transition-colors"
-              >
-                <Eye size={18} />
-                {previewMode ? 'Edit' : 'Preview'}
-              </button>
-              <button
-                onClick={saveForm}
-                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 font-medium transition-colors"
-              >
-                <Save size={18} />
-                Save Form
-              </button>
-              <button
-                onClick={exportForm}
-                className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 font-medium transition-colors"
-              >
-                <FileText size={18} />
-                Export
-              </button>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Physician Form Builder</h1>
+              <p className="text-sm text-gray-600">Create custom medical forms with ease</p>
             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setQuestionTypeDrawerOpen(true)}
+              className="flex items-center gap-2 bg-emerald-500 text-white px-4 py-2 rounded-xl hover:bg-emerald-600 font-medium transition-colors"
+            >
+              <Plus size={18} />
+              Add Question
+            </button>
+            <button
+              onClick={() => setPreviewMode(!previewMode)}
+              className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-50 font-medium transition-colors"
+            >
+              <Eye size={18} />
+              {previewMode ? 'Edit' : 'Preview'}
+            </button>
+            <button
+              onClick={saveForm}
+              className="flex items-center gap-2 bg-emerald-500 text-white px-4 py-2 rounded-xl hover:bg-emerald-600 font-medium transition-colors"
+            >
+              <Save size={18} />
+              Save Form
+            </button>
+            <button
+              onClick={exportForm}
+              className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-50 font-medium transition-colors"
+            >
+              <FileText size={18} />
+              Export
+            </button>
           </div>
         </div>
       </div>
 
-      
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main content with beige background */}
+      <div className="flex-1 overflow-auto bg-background p-6">
+        <div className="max-w-7xl mx-auto">
         {previewMode ? (
           <FormPreview 
             sections={sections} 
@@ -985,9 +984,9 @@ const PhysicianFormBuilder: React.FC = () => {
         ) : (
           <div className="space-y-8">
             
-            <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex items-center gap-3 mb-6">
-                <Settings className="w-5 h-5 text-blue-600" />
+                <Settings className="w-5 h-5 text-emerald-600" />
                 <h2 className="text-xl font-semibold text-gray-900">Form Settings</h2>
               </div>
               
@@ -998,7 +997,7 @@ const PhysicianFormBuilder: React.FC = () => {
                     type="text"
                     value={formTitle}
                     onChange={(e) => setFormTitle(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     placeholder="Enter form title"
                   />
                 </div>
@@ -1008,7 +1007,7 @@ const PhysicianFormBuilder: React.FC = () => {
                   <textarea
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-vertical"
                     rows={3}
                     placeholder="Enter form description"
                   />
@@ -1019,7 +1018,7 @@ const PhysicianFormBuilder: React.FC = () => {
             
             <div className="space-y-6">
               {sections.map((section, sectionIndex) => (
-                <div key={section.id} className="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div key={section.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   
                   <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
                     <div className="flex items-center justify-between">
@@ -1030,12 +1029,12 @@ const PhysicianFormBuilder: React.FC = () => {
                         >
                           {section.expanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                         </button>
-                        <Users className="w-5 h-5 text-blue-600" />
+                        <Users className="w-5 h-5 text-emerald-600" />
                         <input
                           type="text"
                           value={section.name}
                           onChange={(e) => updateSectionName(section.id, e.target.value)}
-                          className="text-lg font-semibold text-gray-900 bg-transparent border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-2 py-1 flex-1"
+                          className="text-lg font-semibold text-gray-900 bg-transparent border-0 focus:outline-none focus:ring-2 focus:ring-emerald-500 rounded px-2 py-1 flex-1"
                           placeholder="Section name"
                         />
                       </div>
@@ -1046,7 +1045,7 @@ const PhysicianFormBuilder: React.FC = () => {
                         </span>
                         <button
                           onClick={() => duplicateSection(section.id)}
-                          className="text-gray-600 hover:text-blue-600 p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                          className="text-gray-600 hover:text-emerald-600 p-2 rounded-lg hover:bg-emerald-50 transition-colors"
                           title="Duplicate section"
                         >
                           <Copy size={16} />
@@ -1073,7 +1072,7 @@ const PhysicianFormBuilder: React.FC = () => {
                           <p className="text-gray-500 mb-4">Add questions to this section to get started</p>
                           <button
                             onClick={() => setQuestionTypeDrawerOpen(true)}
-                            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium transition-colors inline-flex items-center gap-2"
+                            className="bg-emerald-600 text-white px-6 py-3 rounded-lg hover:bg-emerald-700 font-medium transition-colors inline-flex items-center gap-2"
                           >
                             <Plus size={18} />
                             Add Your First Question
@@ -1094,7 +1093,7 @@ const PhysicianFormBuilder: React.FC = () => {
                           <div className="pt-4 border-t border-gray-200">
                             <button
                               onClick={() => setQuestionTypeDrawerOpen(true)}
-                              className="w-full bg-gray-100 hover:bg-blue-50 text-gray-700 hover:text-blue-700 border-2 border-dashed border-gray-300 hover:border-blue-300 px-4 py-6 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                              className="w-full bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border-2 border-dashed border-gray-300 hover:border-emerald-300 px-4 py-6 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
                             >
                               <Plus size={18} />
                               Add Question to This Section
@@ -1111,7 +1110,7 @@ const PhysicianFormBuilder: React.FC = () => {
               <div className="text-center">
                 <button
                   onClick={addSection}
-                  className="bg-white hover:bg-gray-50 text-gray-700 border-2 border-dashed border-gray-300 hover:border-blue-300 px-8 py-6 rounded-xl transition-colors font-medium inline-flex items-center gap-3 shadow-sm"
+                  className="bg-white hover:bg-gray-50 text-gray-700 border-2 border-dashed border-gray-300 hover:border-emerald-300 px-8 py-6 rounded-xl transition-colors font-medium inline-flex items-center gap-3 shadow-sm"
                 >
                   <Plus size={20} />
                   Add New Section
@@ -1127,30 +1126,31 @@ const PhysicianFormBuilder: React.FC = () => {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">{sections.length}</div>
-                  <div className="text-sm text-blue-800">Sections</div>
+                <div className="text-center p-4 bg-emerald-50 rounded-lg">
+                  <div className="text-2xl font-bold text-emerald-600">{sections.length}</div>
+                  <div className="text-sm text-emerald-800">Sections</div>
                 </div>
                 
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
+                <div className="text-center p-4 bg-emerald-50 rounded-lg">
+                  <div className="text-2xl font-bold text-emerald-600">
                     {sections.reduce((acc, section) => acc + section.questions.length, 0)}
                   </div>
-                  <div className="text-sm text-green-800">Total Questions</div>
+                  <div className="text-sm text-emerald-800">Total Questions</div>
                 </div>
                 
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
+                <div className="text-center p-4 bg-emerald-50 rounded-lg">
+                  <div className="text-2xl font-bold text-emerald-600">
                     {sections.reduce((acc, section) => 
                       acc + section.questions.filter(q => q.required).length, 0
                     )}
                   </div>
-                  <div className="text-sm text-purple-800">Required Fields</div>
+                  <div className="text-sm text-emerald-800">Required Fields</div>
                 </div>
               </div>
             </div>
           </div>
         )}
+        </div>
       </div>
 
       

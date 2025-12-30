@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Eye, Download, MoreHorizontal, Loader2, Edit, Search } from "lucide-react"
+import { Eye, Download, MoreHorizontal, Loader2, Edit, Search, Mail, Phone, Calendar } from "lucide-react"
 import { authApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { sanitizeName, sanitizeEmail, validateName, validateEmail } from "@/lib/utils"
@@ -134,26 +134,28 @@ export default function ManagePatientsPage() {
       <div className="p-6 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Patients</CardTitle>
-            <div className="flex items-center gap-4 mt-4">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search patients by name..."
-                  value={searchQuery.value}
-                  onChange={searchQuery.handleChange}
-                  onBlur={searchQuery.handleBlur}
-                  className={`pl-10 ${searchQuery.displayError ? "border-red-500" : ""}`}
-                />
-                {searchQuery.displayError && (
-                  <p className="text-sm text-red-500 mt-1">{searchQuery.displayError}</p>
+            <CardTitle className="mb-2">Patients</CardTitle>
+            <div className="flex items-center justify-between gap-4 mt-4">
+              <div className="flex items-center gap-4">
+                <div className="relative flex-1 min-w-[300px]">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by name or email..."
+                    value={searchQuery.value}
+                    onChange={searchQuery.handleChange}
+                    onBlur={searchQuery.handleBlur}
+                    className={`pl-10 ${searchQuery.displayError ? "border-red-500" : ""}`}
+                  />
+                  {searchQuery.displayError && (
+                    <p className="text-sm text-red-500 mt-1">{searchQuery.displayError}</p>
+                  )}
+                </div>
+                {filteredPatients.length !== patients.length && (
+                  <p className="text-sm text-gray-500">
+                    Showing {filteredPatients.length} of {patients.length} patients
+                  </p>
                 )}
               </div>
-              {filteredPatients.length !== patients.length && (
-                <p className="text-sm text-gray-500">
-                  Showing {filteredPatients.length} of {patients.length} patients
-                </p>
-              )}
               <Button onClick={() => setIsAddOpen(true)}>
                 + Add Patient
               </Button>
@@ -178,10 +180,25 @@ export default function ManagePatientsPage() {
                     <CardContent className="p-4 flex items-center justify-between">
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900">{`${p.firstname || ''} ${p.lastname || ''}`.trim() || 'Unknown Patient'}</h3>
-                        <div className="text-sm text-gray-600 mt-1">
-                          {p.email && <div>{p.email}</div>}
-                          {p.phone && <div>{p.phone}</div>}
-                          {p.dob && <div>DOB: {p.dob}</div>}
+                        <div className="text-sm text-gray-600 mt-1 space-y-1">
+                          {p.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-4 w-4 text-gray-500" />
+                              <span>{p.email}</span>
+                            </div>
+                          )}
+                          {p.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-4 w-4 text-gray-500" />
+                              <span>{p.phone}</span>
+                            </div>
+                          )}
+                          {p.dob && (
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-gray-500" />
+                              <span>{p.dob}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

@@ -62,8 +62,8 @@ export default function ForgotPasswordPage() {
 
   if (isEmailSent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md shadow-sm border border-gray-200 rounded-xl">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
               <div className="p-3 bg-green-100 rounded-full">
@@ -104,12 +104,12 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md shadow-sm border border-gray-200 rounded-xl">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-blue-100 rounded-full">
-              <Stethoscope className="h-8 w-8 text-blue-600" />
+            <div className="p-3 bg-emerald-100 rounded-full">
+              <Stethoscope className="h-8 w-8 text-emerald-600" />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900">Forgot Password</CardTitle>
@@ -148,7 +148,7 @@ export default function ForgotPasswordPage() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              <Link href="/login" className="text-blue-600 hover:underline">
+              <Link href="/login" className="text-emerald-600 hover:underline">
                 <ArrowLeft className="inline mr-1 h-3 w-3" />
                 Back to Login
               </Link>

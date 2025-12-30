@@ -26,24 +26,24 @@ export function WelcomeBanner() {
   if (!isVisible) return null
 
   return (
-    <Card className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+    <Card className="mb-6 bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-blue-100 rounded-full">
-              <Sparkles className="h-5 w-5 text-blue-600" />
+            <div className="p-2 bg-emerald-100 rounded-full">
+              <Sparkles className="h-5 w-5 text-emerald-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-blue-900">Welcome to SOAP Medical Notes!</h3>
-              <p className="text-sm text-blue-700 mt-1">
+              <h3 className="font-semibold text-emerald-900">Welcome to SOAP Medical Notes!</h3>
+              <p className="text-sm text-emerald-700 mt-1">
                 You're now using the demo version. Start by generating your first SOAP note from an audio recording or
                 explore the EHR integration features.
               </p>
               <div className="flex gap-2 mt-3">
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600">
                   Generate First Note
                 </Button>
-                <Button size="sm" variant="outline" className="bg-transparent">
+                <Button size="sm" variant="outline" className="bg-transparent border-emerald-300 text-emerald-700 hover:bg-emerald-50">
                   Take Tour
                 </Button>
               </div>
@@ -53,7 +53,7 @@ export function WelcomeBanner() {
             variant="ghost"
             size="sm"
             onClick={handleDismiss}
-            className="text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+            className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100"
           >
             <X className="h-4 w-4" />
           </Button>

@@ -387,11 +387,11 @@ export default function HistoryPage() {
   // We'll render a loading state only for the results area below.
 
   return (
-    <div>
+    <div className="flex flex-col h-full">
       <Header title="SOAP Notes History" description="View and manage all your medical documentation" />
 
-      <div className="p-6 space-y-6">
-        {/* Filters */}
+      {/* Fixed Filters Section */}
+      <div className="p-6 pb-4">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -421,31 +421,13 @@ export default function HistoryPage() {
                   buttonClassName="h-9 w-full"
                 />
               </div>
-              {/* <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full md:w-48">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-full md:w-48">
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="follow-up">Follow-up</SelectItem>
-                  <SelectItem value="initial">Initial Consultation</SelectItem>
-                  <SelectItem value="annual">Annual Checkup</SelectItem>
-                  <SelectItem value="urgent">Urgent Care</SelectItem>
-                </SelectContent>
-              </Select> */}
             </div>
           </CardContent>
         </Card>
+      </div>
 
+      {/* Scrollable Notes List Section */}
+      <div className="flex-1 overflow-auto px-6 pb-6">
         {/* Results area - show loader only for results while keeping filters visible */}
         {isLoading ? (
           <div className="p-6 flex items-center justify-center">
@@ -457,14 +439,14 @@ export default function HistoryPage() {
         ) : (
           <>
             {/* Results Summary */}
-            <div className="flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between">
               <p className="text-sm text-gray-600">
                 Showing {filteredNotes.length} of {totalNotes} SOAP notes (Page {currentPage} of {totalPages})
               </p>
             </div>
 
             {/* Notes List */}
-            <div className="space-y-4">
+            <div className="mt-2 space-y-4">
               {filteredNotes.map((note) => (
                 <Card key={note.id} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-6">
@@ -526,7 +508,7 @@ export default function HistoryPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2">
+              <div className="mt-6 flex items-center justify-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"

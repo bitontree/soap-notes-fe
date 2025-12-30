@@ -21,7 +21,7 @@ import timeGridPlugin from "@fullcalendar/timegrid"
 import interactionPlugin from "@fullcalendar/interaction"
 import { AppointmentDrawer } from "../../components/schedule/appointment-drawer"
 import { RescheduleDrawer } from "@/components/schedule/reschedule-drawer"
-import { X } from "lucide-react"
+import { X, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { color } from "html2canvas/dist/types/css/types/color"
 
@@ -1485,7 +1485,17 @@ export default function SchedulesPage() {
   }
 
   return (
-    <div className="relative p-6 space-y-4 ">
+    <div className="flex flex-col h-full overflow-auto">
+      <div className="relative p-6 space-y-4 flex-1">
+      {/* Loading Overlay */}
+      {loadingAll && (
+        <div className="absolute inset-0 bg-white/80 z-50 flex items-center justify-center">
+          <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-xl shadow-lg border">
+            <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+            <span className="text-gray-700 font-medium">Loading schedules...</span>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Schedules</h1>
         <div className="flex items-center">
@@ -2554,6 +2564,7 @@ export default function SchedulesPage() {
           </aside>
         </div>, document.body)
       }
+      </div>
     </div>
   )
 }

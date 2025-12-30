@@ -640,7 +640,7 @@ export default function BiomarkersPage() {
     return (
       <Card className="shadow-sm border border-gray-200">
         <CardContent className="p-0">
-          <div className={cn("w-full max-w-full overflow-x-auto", isSidebarOpen ? "max-h-[calc(100vh-200px)]" : "max-h-[calc(100vh-200px)]")}>
+          <div className="w-full max-w-full overflow-x-auto max-h-[60vh]">
             <table className={cn("w-full border-separate border-spacing-0 bg-white text-sm", isSidebarOpen ? "min-w-full" : "min-w-full")}> 
               <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-50 border-b-2 border-gray-300">
@@ -733,45 +733,43 @@ export default function BiomarkersPage() {
   }
 
   return (
-    <div>
+    <div className="flex flex-col h-full">
       <Header title="Biomarkers" description="Explore biomarker measurements over time" />
       
       {/* Main Layout with Sidebar */}
-      <div className="flex h-[calc(100vh-120px)] flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Main Content Area */}
         <div className={cn("flex-1 min-w-0 transition-all duration-300 overflow-y-auto scrollbar-hide", isSidebarOpen ? "mr-4" : "mr-0")}>
-          <div className="space-y-6 w-full p-6 min-h-[calc(100vh-200px)]">
-            {/* Patient Selection */}
+          <div className="space-y-6 w-full p-6">
+            {/* Filters (includes Patient selector) */}
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-700">Patient:</label>
-                <Select 
-                  value={selectedPatient?.id || ""} 
-                  onValueChange={(value) => {
-                    const patient = availablePatients.find(p => p.id === value)
-                    setSelectedPatient(patient || null)
-                  }}
-                  disabled={isLoadingPatients}
-                >
-                  <SelectTrigger className="w-64 h-9 text-sm">
-                    <SelectValue placeholder={isLoadingPatients ? "Loading patients..." : "Select a patient"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availablePatients.map((patient) => (
-                      <SelectItem key={patient.id} value={patient.id} className="text-sm">
-                        {patient.firstname} {patient.lastname} ({patient.age} years)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Filters - Only show if a patient is selected */}
-            {selectedPatient && (
-              <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
                 <div className={cn(isSidebarOpen ? "grid grid-cols-1 gap-3" : "flex flex-wrap items-center justify-between gap-3")}> 
                   <div className={cn("flex items-center gap-4", isSidebarOpen ? "col-span-1 w-full flex-nowrap" : "flex-wrap min-w-0")}> 
+                    {/* Patient */}
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-700">Patient:</label>
+                      <Select 
+                        value={selectedPatient?.id || ""} 
+                        onValueChange={(value) => {
+                          const patient = availablePatients.find(p => p.id === value)
+                          setSelectedPatient(patient || null)
+                        }}
+                        disabled={isLoadingPatients}
+                      >
+                        <SelectTrigger className="w-64 h-9 text-sm">
+                          <SelectValue placeholder={isLoadingPatients ? "Loading patients..." : "Select a patient"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availablePatients.map((patient) => (
+                            <SelectItem key={patient.id} value={patient.id} className="text-sm">
+                              {patient.firstname} {patient.lastname} ({patient.age} years)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Test Type Filter */}
                     <label className="text-sm font-medium text-gray-700">Filter:</label>
                     <Select value={selectedTestType} onValueChange={setSelectedTestType}>
                       <SelectTrigger className="w-48 h-9 text-sm">
@@ -817,7 +815,7 @@ export default function BiomarkersPage() {
                       variant="outline" 
                       size="sm" 
                       onClick={() => loadReports(selectedPatient)}
-                      disabled={isLoading}
+                      disabled={!selectedPatient || isLoading}
                       className="h-9"
                     >
                       <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
@@ -827,14 +825,14 @@ export default function BiomarkersPage() {
                   </div>
                 </div>
               </div>
-            )}
+            
 
             {/* Table - Only show if a patient is selected */}
             {renderTable()}
           </div>
         </div>
 
-        {/* Patient Context Sidebar */}
+        {/* Patient Details Sidebar */}
         {selectedPatient && (
           <div className={cn(
             "bg-white shadow-lg transition-all duration-300 overflow-hidden flex flex-col flex-none",
@@ -843,7 +841,7 @@ export default function BiomarkersPage() {
             {/* Sidebar Header */}
             <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-800">Patient Context</h3>
+                <h3 className="font-semibold text-gray-800">Patient Details</h3>
                 <Button
                   variant="ghost"
                   size="sm"

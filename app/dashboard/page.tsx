@@ -214,98 +214,101 @@ export default function DashboardPage() {
   }
 
   return (
-    <div>
+    <div className="flex flex-col h-full">
       <Header title="Dashboard" description="Overview of your medical documentation activity" />
-      <div className="p-6 space-y-6">
+      <div className="p-2 space-y-2 flex-1 overflow-auto">
         {/* Stats Grid (dynamic) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <Card className="rounded-2xl border border-gray-200/60">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total SOAP Notes</CardTitle>
-              <FileText className="h-4 w-4 text-blue-600" />
+              <CardTitle className="text-sm font-medium text-gray-500">Total SOAP Notes</CardTitle>
+              <FileText className="h-5 w-5 text-emerald-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.totalNotes}</div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.totalNotesPct != null ? `${stats.changes.totalNotesPct > 0 ? '+' : ''}${stats.changes.totalNotesPct}% from last month` : 'Updated now')}
+              <div className="text-3xl font-bold text-gray-900">
+                {isStatsLoading ? <Loader2 className="h-6 w-6 animate-spin text-emerald-600" /> : stats.totalNotes}
+              </div>
+              <div className="flex items-center text-xs text-gray-500 mt-2">
+                <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
+                {isStatsLoading ? <span className="text-gray-400">Loading...</span> : (stats.changes?.totalNotesPct != null ? `${stats.changes.totalNotesPct > 0 ? '+' : ''}${stats.changes.totalNotesPct}% from last month` : 'Updated now')}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-2xl border border-gray-200/60">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">This Week</CardTitle>
-              <Calendar className="h-4 w-4 text-green-600" />
+              <CardTitle className="text-sm font-medium text-gray-500">This Week</CardTitle>
+              <Calendar className="h-5 w-5 text-emerald-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.thisWeek}</div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.thisWeekPct != null ? `${stats.changes.thisWeekPct > 0 ? '+' : ''}${stats.changes.thisWeekPct}% from last week` : 'Last 7 days')}
+              <div className="text-3xl font-bold text-gray-900">
+                {isStatsLoading ? <Loader2 className="h-6 w-6 animate-spin text-emerald-600" /> : stats.thisWeek}
+              </div>
+              <div className="flex items-center text-xs text-gray-500 mt-2">
+                <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
+                {isStatsLoading ? <span className="text-gray-400">Loading...</span> : (stats.changes?.thisWeekPct != null ? `${stats.changes.thisWeekPct > 0 ? '+' : ''}${stats.changes.thisWeekPct}% from last week` : 'Last 7 days')}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-2xl border border-gray-200/60">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg. Processing Time</CardTitle>
-              <Clock className="h-4 w-4 text-orange-600" />
+              <CardTitle className="text-sm font-medium text-gray-500">Avg. Processing Time</CardTitle>
+              <Clock className="h-5 w-5 text-emerald-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {isStatsLoading ? '—' : (stats.avgProcessingTimeMs == null ? '—' : `${(stats.avgProcessingTimeMs / 60000).toFixed(1)}m`)}
+              <div className="text-3xl font-bold text-gray-900">
+                {isStatsLoading ? <Loader2 className="h-6 w-6 animate-spin text-emerald-600" /> : (stats.avgProcessingTimeMs == null ? '—' : `${(stats.avgProcessingTimeMs / 60000).toFixed(1)}m`)}
               </div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.avgProcessingTimePct != null ? `${stats.changes.avgProcessingTimePct > 0 ? '+' : ''}${stats.changes.avgProcessingTimePct}% vs last month` : 'Based on recent records')}
+              <div className="flex items-center text-xs text-gray-500 mt-2">
+                <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
+                {isStatsLoading ? <span className="text-gray-400">Loading...</span> : (stats.changes?.avgProcessingTimePct != null ? `${stats.changes.avgProcessingTimePct > 0 ? '+' : ''}${stats.changes.avgProcessingTimePct}% vs last month` : 'Based on recent records')}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Active Patients</CardTitle>
-              <Users className="h-4 w-4 text-purple-600" />
-              </CardHeader>
-              <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.activePatients}</div>
-                <div className="flex items-center text-xs text-gray-600 mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.activePatientsPct != null ? `${stats.changes.activePatientsPct > 0 ? '+' : ''}${stats.changes.activePatientsPct}% from last month` : 'Patients in system')}
-                </div>
-              </CardContent>
-            </Card>
+          <Card className="rounded-2xl border border-gray-200/60">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-500">Active Patients</CardTitle>
+              <Users className="h-5 w-5 text-emerald-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-gray-900">
+                {isStatsLoading ? <Loader2 className="h-6 w-6 animate-spin text-emerald-600" /> : stats.activePatients}
+              </div>
+              <div className="flex items-center text-xs text-gray-500 mt-2">
+                <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
+                {isStatsLoading ? <span className="text-gray-400">Loading...</span> : (stats.changes?.activePatientsPct != null ? `${stats.changes.activePatientsPct > 0 ? '+' : ''}${stats.changes.activePatientsPct}% from last month` : 'Patients in system')}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {/* Quick Actions */}
-          <Card>
+          <Card className="rounded-2xl border border-gray-200/60">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Plus className="h-5 w-5 text-emerald-600" />
                 Quick Actions
               </CardTitle>
               <CardDescription>Start your medical documentation workflow</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex gap-2">
-                {/* Quick action buttons only (Appointment drawer moved to schedules page) */}
-              </div>
+            <CardContent className="space-y-2">
               <Link href="/generate">
-                <Button className="w-full justify-start gap-2">
+                <Button className="w-full justify-start gap-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl">
                   <FileText className="h-4 w-4" />
                   Generate New SOAP Note
                 </Button>
               </Link>
               <Link href="/ehr">
-                <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
+                <Button variant="outline" className="w-full justify-start gap-2 bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 rounded-xl">
                   <Activity className="h-4 w-4" />
                   Import from EHR
                 </Button>
               </Link>
               <Link href="/history">
-                <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
+                <Button variant="outline" className="w-full justify-start gap-2 bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 rounded-xl">
                   <Clock className="h-4 w-4" />
                   View All Records
                 </Button>
@@ -314,38 +317,40 @@ export default function DashboardPage() {
           </Card>
 
           {/* ✅ Recent Notes from API */}
-          <Card className="lg:col-span-2">
+          <Card className="lg:col-span-2 rounded-2xl border border-gray-200/60">
             <CardHeader>
-              <CardTitle>Recent SOAP Notes</CardTitle>
+              <CardTitle className="text-lg">Recent SOAP Notes</CardTitle>
               <CardDescription>Your latest medical documentation</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentNotes.length > 0 ? (
+              <div className="space-y-3">
+                {isStatsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                    <span className="ml-2 text-gray-600">Loading recent notes...</span>
+                  </div>
+                ) : recentNotes.length > 0 ? (
                   recentNotes.map((note) => (
-                    <div key={note.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-gray-900">{note.patient_name || "Unknown Patient"}</h4>
-                          {/* Status badge intentionally hidden in UI for now. Keep the component here commented
-                              so it can be re-enabled later if needed. */}
-                          {/*
-                          <Badge variant={note.status === "completed" ? "default" : "secondary"}>
-                            {note.status || "unknown"}
-                          </Badge>
-                          */}
+                    <div key={note.id} className="flex items-center justify-between p-3 rounded-2xl border border-gray-100 bg-white">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center">
+                          <span className="text-white font-medium text-sm">
+                            {(note.patient_name || "U").charAt(0).toUpperCase()}
+                          </span>
                         </div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          {note.type || "SOAP Note"} •{" "}
-                          {note.created_at ? new Date(note.created_at).toLocaleDateString() : "Unknown date"}
+                        <div>
+                          <h4 className="font-medium text-gray-900">{note.patient_name || "Unknown Patient"}</h4>
+                          <div className="text-sm text-gray-500 mt-0.5">
+                            {note.created_at ? new Date(note.created_at).toLocaleDateString() : "Unknown date"}
+                          </div>
                         </div>
                       </div>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
+                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                         onClick={() => handleViewNote(note)}
                       >
-                        <Eye className="mr-2 h-4 w-4" />
                         View
                       </Button>
                     </div>
@@ -354,9 +359,9 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-500">No recent notes available.</p>
                 )}
               </div>
-              <div className="mt-4 pt-4 border-t">
+              <div className="mt-2 pt-2 border-t border-gray-100">
                 <Link href="/history">
-                  <Button variant="outline" className="w-full bg-transparent">
+                  <Button variant="outline" className="w-full bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 rounded-2xl">
                     View All Notes
                   </Button>
                 </Link>
@@ -413,7 +418,7 @@ export default function DashboardPage() {
                       <Card>
                         <CardHeader className="pb-3">
                           <CardTitle className="flex items-center gap-2 text-lg">
-                            <UserIcon className="h-5 w-5 text-blue-600" />
+                            <UserIcon className="h-5 w-5 text-emerald-600" />
                             Subjective
                           </CardTitle>
                         </CardHeader>

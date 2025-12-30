@@ -523,13 +523,14 @@ export default function GeneratePage() {
   }
 
     return (
-      <div>
+      <div className="flex flex-col h-full">
         <Header
           title="Generate SOAP Note"
           description="Upload audio recordings to generate structured medical documentation"
         />
 
-        <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <div className="flex-1 overflow-auto">
+          <div className="p-6 max-w-6xl mx-auto space-y-6">
           {!soapNote ? (
             <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1033,7 +1034,8 @@ export default function GeneratePage() {
             </Tabs>
           </div>
         )}
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    )
 }

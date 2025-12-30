@@ -309,11 +309,11 @@ export default function PatientSelector({
                 </div>
 
                 {selectedPatient && (
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <h4 className="font-medium text-blue-900 mb-2">
+                  <div className="p-4 bg-emerald-50 rounded-lg">
+                    <h4 className="font-medium text-emerald-900 mb-2">
                       Selected Patient
                     </h4>
-                    <div className="space-y-1 text-sm text-blue-800">
+                    <div className="space-y-1 text-sm text-emerald-800">
                       <p>
                         <strong>Name:</strong> {selectedPatient.firstname}{" "}
                         {selectedPatient.lastname}
