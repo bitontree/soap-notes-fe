@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const [icdPage, setIcdPage] = useState<number>(1)
   const [icdPageSize, setIcdPageSize] = useState<number>(10)
   const [icdHasMore, setIcdHasMore] = useState<boolean>(false)
+  const [selectedCodeType, setSelectedCodeType] = useState<'icd' | 'drugs' | 'cpt' | 'hcpcs'>('icd')
 
 
   useEffect(() => {
@@ -130,18 +131,19 @@ export default function DashboardPage() {
     
     setIsLoadingIcdCodes(true)
     try {
-      const response = await billingCodesApi.getICDCodes({
-        user_id: userId,
-        patient_id: patientId,
-        soap_note_id: noteId,
-      })
-      const codes = response.codes || []
+      let response: any = null
+      if (selectedCodeType === 'drugs') {
+        response = await billingCodesApi.getDrugBillingCodes({ user_id: userId, patient_id: patientId, soap_note_id: noteId })
+      } else {
+        response = await billingCodesApi.getICDCodes({ user_id: userId, patient_id: patientId, soap_note_id: noteId })
+      }
+      const codes = (response && response.codes) ? response.codes : []
       setIcdCodes(codes)
       const codeKeys = (codes || []).map((c: any) => String(c.code || ""))
       setSelectedIcdCodesSet(new Set(codeKeys))
       setIcdOriginalSelection(codeKeys)
     } catch (error: any) {
-      console.error("Failed to fetch ICD codes:", error)
+      console.error("Failed to fetch codes:", error)
       setIcdCodes([])
     } finally {
       setIsLoadingIcdCodes(false)
@@ -161,14 +163,15 @@ export default function DashboardPage() {
 
     setIsSearchingIcd(true)
     try {
-      const results = await billingCodesApi.searchCodes(query, pageToUse, limitToUse)
-      setIcdSearchResults(results || [])
+      const rawResults = await billingCodesApi.searchByType(selectedCodeType, query, pageToUse, limitToUse)
+      const results = (rawResults || []).map((it: any) => ({ code: it.code || it.Code || it.code_value || '', description: it.description || it.name || it.intent || '' }))
+      setIcdSearchResults(results)
       setIcdPage(pageToUse)
       setIcdPageSize(limitToUse)
       setIcdHasMore((results?.length ?? 0) >= limitToUse)
     } catch (error: any) {
-      console.error("ICD search failed:", error)
-      toast({ title: "Search failed", description: error?.message || "Failed to search ICD codes", variant: "destructive" })
+      console.error("Search failed:", error)
+      toast({ title: "Search failed", description: error?.message || "Failed to search codes", variant: "destructive" })
       setIcdSearchResults([])
       setIcdHasMore(false)
     } finally {
@@ -184,6 +187,10 @@ export default function DashboardPage() {
     setIcdOriginalSelection([])
     fetchIcdCodes(note)
   }
+
+  useEffect(() => {
+    if (selectedNote) fetchIcdCodes(selectedNote)
+  }, [selectedCodeType])
 
   const toggleIcdSelection = (code?: string) => {
     if (!code) return
@@ -398,7 +405,7 @@ export default function DashboardPage() {
                     <TabsTrigger value="soap">SOAP Note</TabsTrigger>
                     <TabsTrigger value="transcript">Transcript</TabsTrigger>
                     <TabsTrigger value="summary">Summary</TabsTrigger>
-                    <TabsTrigger value="icd">ICD Codes</TabsTrigger>
+                    <TabsTrigger value="icd">Billing Codes</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="soap" className="space-y-4">
@@ -505,30 +512,44 @@ export default function DashboardPage() {
                   <TabsContent value="icd">
                     <Card>
                       <CardHeader>
-                        <CardTitle>ICD-10-CM Disease Codes </CardTitle>
-                        <CardDescription>Diagnoses and Symptoms — diseases & injuries. Excludes CPT/HCPCS and drug codes.</CardDescription>
+                        <CardTitle>Billing Codes</CardTitle>
+                        <CardDescription>Search and manage ICD-10-CM Diseases & Injuries, ICD-10-CM Drugs, CPT, and HCPCS billing codes.</CardDescription>
                       </CardHeader>
                       <CardContent>
                         {/* ICD Search Box */}
                         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                          <div className="relative w-full sm:flex-1">
-                            <input
-                              value={icdQuery}
-                              onChange={(e) => setIcdQuery(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') { searchIcdCodes(icdQuery, 1, icdPageSize) } }}
-                              placeholder="Search ICD code or description (e.g. E11, diabetes, chest pain)"
-                              className="w-full rounded border px-3 py-2 text-sm pr-10"
-                            />
-                            {icdQuery && icdQuery.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setIcdQuery("")}
-                                aria-label="Clear search query"
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            )}
+                          <div className="flex items-center gap-2 w-full">
+                            <select
+                              value={selectedCodeType}
+                              onChange={(e) => setSelectedCodeType(e.target.value as any)}
+                              className="rounded border px-3 py-2 text-sm"
+                              aria-label="Select code type"
+                            >
+                              <option value="icd">ICD-10-CM Diseases & Injuries</option>
+                              <option value="drugs">ICD-10-CM Drugs</option>
+                              <option value="cpt">CPT</option>
+                              <option value="hcpcs">HCPCS</option>
+                            </select>
+
+                            <div className="relative flex-1">
+                              <input
+                                value={icdQuery}
+                                onChange={(e) => setIcdQuery(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { searchIcdCodes(icdQuery, 1, icdPageSize) } }}
+                                placeholder={selectedCodeType === 'drugs' ? "Search drug name or code (e.g. aspirin, NDC)" : "Search ICD code or description (e.g. E11, diabetes, chest pain)"}
+                                className="w-full rounded border px-3 py-2 text-sm pr-10"
+                              />
+                              {icdQuery && icdQuery.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setIcdQuery("")}
+                                  aria-label="Clear search query"
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div className="mt-2 sm:mt-0">
                             <Button size="sm" onClick={() => searchIcdCodes(icdQuery, 1, icdPageSize)} disabled={isSearchingIcd}>
