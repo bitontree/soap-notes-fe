@@ -72,6 +72,12 @@ interface SOAPNote {
   diarized_transcript?: string
   icdCodes?: ICDBillingCodeItem[]
 }
+// include optional identifiers used elsewhere in the file
+interface SOAPNoteExt extends SOAPNote {
+  id?: string
+  soap_data?: any
+  health_report_id?: string
+}
 
 // Formatting helper functions
 function formatSubjective(subjective: Record<string, string>): string {
@@ -102,7 +108,7 @@ export default function GeneratePage() {
   const [notes, setNotes] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [soapNote, setSOAPNote] = useState<SOAPNote | null>(null)
+  const [soapNote, setSOAPNote] = useState<SOAPNoteExt | null>(null)
   
   // Audio recording states
   const [isRecording, setIsRecording] = useState(false)
@@ -127,7 +133,7 @@ export default function GeneratePage() {
   
   // Refs for audio recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const recordingIntervalRef = useRef<number | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const onDrop = useCallback(
@@ -393,8 +399,8 @@ export default function GeneratePage() {
       setIsPaused(false)
       setRecordingTime(0)
       
-      // Start timer
-      recordingIntervalRef.current = setInterval(() => {
+      // Start timer (use browser window.setInterval to get a numeric id)
+      recordingIntervalRef.current = window.setInterval(() => {
         setRecordingTime(prev => prev + 1)
       }, 1000)
       
@@ -414,7 +420,7 @@ export default function GeneratePage() {
       setIsPaused(false)
       
       if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current)
+        window.clearInterval(recordingIntervalRef.current as number)
         recordingIntervalRef.current = null
       }
     }
@@ -426,7 +432,7 @@ export default function GeneratePage() {
       setIsPaused(true)
       
       if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current)
+        window.clearInterval(recordingIntervalRef.current as number)
         recordingIntervalRef.current = null
       }
     }
@@ -437,8 +443,8 @@ export default function GeneratePage() {
       mediaRecorderRef.current.resume()
       setIsPaused(false)
       
-      // Resume timer
-      recordingIntervalRef.current = setInterval(() => {
+      // Resume timer (use browser window.setInterval)
+      recordingIntervalRef.current = window.setInterval(() => {
         setRecordingTime(prev => prev + 1)
       }, 1000)
     }
@@ -474,7 +480,7 @@ export default function GeneratePage() {
     setIsPlaying(false)
     
     if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current)
+      window.clearInterval(recordingIntervalRef.current as number)
       recordingIntervalRef.current = null
     }
     
@@ -498,7 +504,18 @@ export default function GeneratePage() {
 
     setIsSearchingIcd(true)
     try {
-      const results = await billingCodesApi.searchCodes(query, pageToUse, limitToUse)
+      const userId = user?.id
+      const patientId = selectedPatient?.id
+      const noteId = soapNote?.id
+      const healthReportId = (soapNote as any)?.health_report_id || (soapNote?.soap_data as any)?.health_report_id
+
+      const context: any = {}
+      if (userId) context.user_id = userId
+      if (patientId) context.patient_id = patientId
+      if (healthReportId) context.health_report_id = healthReportId
+      else if (noteId) context.soap_note_id = noteId
+
+      const results = await billingCodesApi.searchCodes(query, pageToUse, limitToUse, context)
       setIcdSearchResults(results || [])
       setIcdPage(pageToUse)
       setIcdPageSize(limitToUse)

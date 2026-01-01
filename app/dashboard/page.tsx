@@ -122,20 +122,25 @@ export default function DashboardPage() {
     const noteId = note?.id
     const userId = user?.id  // Use current logged-in user's ID
     const patientId = note?.soap_data?.patient_id || note?.patient_id
-    
-    if (!noteId || !userId || !patientId) {
-      console.log("Missing ICD codes params:", { noteId, userId, patientId })
+    const healthReportId = (note as any)?.health_report_id || (note.soap_data as any)?.health_report_id || undefined
+
+    if (!userId || !patientId || (!noteId && !healthReportId)) {
+      console.log("Missing ICD codes params:", { noteId, userId, patientId, healthReportId })
       setIcdCodes([])
       return
     }
-    
+
     setIsLoadingIcdCodes(true)
     try {
       let response: any = null
+      const payloadBase: any = { user_id: userId, patient_id: patientId }
+      if (healthReportId) payloadBase.health_report_id = healthReportId
+      else payloadBase.soap_note_id = noteId
+
       if (selectedCodeType === 'drugs') {
-        response = await billingCodesApi.getDrugBillingCodes({ user_id: userId, patient_id: patientId, soap_note_id: noteId })
+        response = await billingCodesApi.getDrugBillingCodes(payloadBase)
       } else {
-        response = await billingCodesApi.getICDCodes({ user_id: userId, patient_id: patientId, soap_note_id: noteId })
+        response = await billingCodesApi.getICDCodes(payloadBase)
       }
       const codes = (response && response.codes) ? response.codes : []
       setIcdCodes(codes)
@@ -163,7 +168,18 @@ export default function DashboardPage() {
 
     setIsSearchingIcd(true)
     try {
-      const rawResults = await billingCodesApi.searchByType(selectedCodeType, query, pageToUse, limitToUse)
+      const userId = user?.id
+      const noteId = selectedNote?.id
+      const patientId = selectedNote?.soap_data?.patient_id || selectedNote?.patient_id
+      const healthReportId = (selectedNote as any)?.health_report_id || (selectedNote?.soap_data as any)?.health_report_id
+
+      const context: any = {}
+      if (userId) context.user_id = userId
+      if (patientId) context.patient_id = patientId
+      if (healthReportId) context.health_report_id = healthReportId
+      else if (noteId) context.soap_note_id = noteId
+
+      const rawResults = await billingCodesApi.searchByType(selectedCodeType, query, pageToUse, limitToUse, context)
       const results = (rawResults || []).map((it: any) => ({ code: it.code || it.Code || it.code_value || '', description: it.description || it.name || it.intent || '' }))
       setIcdSearchResults(results)
       setIcdPage(pageToUse)
