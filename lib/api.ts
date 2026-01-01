@@ -1103,6 +1103,60 @@ export const appointmentsApi = {
   },
 };
 
+// ---------- Confirm Reschedule Decision API ----------
+export interface ConfirmRescheduleDecisionPayload {
+  appointment_id: string;
+  patient_id: string;
+  new_slot_id?: string;
+  confirm_reschedule: boolean;
+  user_id?: string; // if available; backend may infer from notification context
+  notification_id: string;
+}
+
+export async function confirmRescheduleDecision(
+  payload: ConfirmRescheduleDecisionPayload
+): Promise<any> {
+  // This endpoint is used from a public confirmation page; do NOT require auth headers.
+  const response = await apiRequest<any>("/confirmrescheduling/decision", {
+    method: "POST",
+    data: payload,
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.success) {
+    throw new Error(response.message || "Failed to submit reschedule decision");
+  }
+  return response.data;
+}
+
+// ---------- Confirm Reschedule Validity API ----------
+export interface CheckValidityPayload {
+  patient_id: string;
+  notification_id: string;
+}
+
+export interface CheckValidityResponse {
+  status: "pending" | "booked" | "rejected" | "no_response" | string;
+  [key: string]: any;
+}
+
+export async function checkRescheduleValidity(
+  payload: CheckValidityPayload
+): Promise<CheckValidityResponse> {
+  // Public endpoint similar to decision; no auth headers
+  const response = await apiRequest<CheckValidityResponse>(
+    "/confirmrescheduling/check_validity",
+    {
+      method: "POST",
+      data: payload,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  if (!response.success) {
+    throw new Error(response.message || "Failed to check reschedule validity");
+  }
+  return (response.data || {}) as CheckValidityResponse;
+}
+
 export async function saveFormToDatabase(formData: any): Promise<any> {
   
   const headers = {

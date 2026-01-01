@@ -124,6 +124,8 @@ export default function SchedulesPage() {
   const [confirmDeleteNotes, setConfirmDeleteNotes] = useState<string>("")
   const [confirmDeleteError, setConfirmDeleteError] = useState<string | undefined>(undefined)
   const [confirmDeleteSlot, setConfirmDeleteSlot] = useState<any | null>(null)
+  const [waitlistPopupOpen, setWaitlistPopupOpen] = useState(false)
+  const [waitlistSelectedOption, setWaitlistSelectedOption] = useState<'waitlist' | 'select' | 'delete' | null>(null)
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [reschedulePayload, setReschedulePayload] = useState<{ patient?: any; slot?: any; slotId?: string; patientId?: string | null } | null>(null)
   const [loadingAll, setLoadingAll] = useState(false)
@@ -469,8 +471,9 @@ export default function SchedulesPage() {
   }, [confirmDeleteOpen, slotMenuSlotId])
 
   // Clear delete snapshot and form when drawer closes to avoid stale data
+  // BUT don't clear if waitlist popup is open (we need the values for the API call)
   useEffect(() => {
-    if (!confirmDeleteOpen) {
+    if (!confirmDeleteOpen && !waitlistPopupOpen) {
       setConfirmDeleteSlot(null)
       setConfirmDeleteReason(undefined)
       setConfirmDeleteNotes("")
@@ -479,7 +482,7 @@ export default function SchedulesPage() {
       setSlotMenuPatientIndex(null)
       setSlotMenuPatientId(null)
     }
-  }, [confirmDeleteOpen])
+  }, [confirmDeleteOpen, waitlistPopupOpen])
 
   // Auto-close the slot action menu after 3 seconds to avoid it persisting
   useEffect(() => {
@@ -669,6 +672,22 @@ export default function SchedulesPage() {
 
   async function handleConfirmDeleteAppointmentClick() {
     setConfirmDeleteError(undefined)
+    
+    // Validate cancellation reason
+    if (!confirmDeleteReason) {
+      setConfirmDeleteError('Please select a cancellation reason')
+      return
+    }
+    
+    // Close the delete drawer and open the waitlist popup
+    setConfirmDeleteOpen(false)
+    setWaitlistPopupOpen(true)
+  }
+
+  // mode: 'waitlist' => notify waitlist
+  //       'select'   => open manual add patient drawer after cancel
+  //       'delete'   => just cancel with no further action
+  async function handleDeleteWithWaitlist(mode: 'waitlist' | 'select' | 'delete') {
     setDeletingAppointment(true)
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}')
@@ -707,7 +726,7 @@ export default function SchedulesPage() {
       if (!freshAppt) {
         toast({ title: "Not found", description: "Appointment not found for this slot (it may have been removed)", variant: "destructive" })
         await refreshSlotsAndSchedules()
-        setConfirmDeleteOpen(false)
+        setWaitlistPopupOpen(false)
         setSlotMenuSlotId(null)
         return
       }
@@ -715,25 +734,43 @@ export default function SchedulesPage() {
       if (!(status === 'BOOKED' || status === 'RESCHEDULED')) {
         toast({ title: "Cannot delete", description: `Appointment status is ${status || 'unknown'}. Only BOOKED or RESCHEDULED appointments can be cancelled.`, variant: "destructive" })
         await refreshSlotsAndSchedules()
-        setConfirmDeleteOpen(false)
+        setWaitlistPopupOpen(false)
         setSlotMenuSlotId(null)
         return
       }
-      if (!confirmDeleteReason) {
-        setConfirmDeleteError('Please select a cancellation reason')
-        return
-      }
+      
+      const useWaitlist = mode === 'waitlist'
       const payload: any = {
         patient_id: freshAppt.patient_id || freshAppt.patient?.id || freshAppt.patient?._id,
         slot_id: freshAppt.slot_id || slotMenuSlotId,
-        reason: confirmDeleteReason
+        reason: confirmDeleteReason,
+        use_waitlist: useWaitlist
       }
       if (confirmDeleteNotes && confirmDeleteNotes.trim() !== '') payload.notes = confirmDeleteNotes.trim()
       const apptId = freshAppt._id || freshAppt.id || freshAppt.appointment_id
+      
+      // Get slot info before deleting to pass to appointment drawer
+      const deletedSlot = slots.find(s => String(s.id) === String(slotMenuSlotId))
+      const slotDate = deletedSlot?.date || freshAppt.date || ''
+      const slotLocation = deletedSlot?.location || freshAppt.location || ''
+      const slotTime = deletedSlot?.start_time || freshAppt.start_time || ''
+      const deletedSlotId = String(slotMenuSlotId || '')
+      const deletedPatientIndex = slotMenuPatientIndex
+      
       await api.appointmentsApi.cancel(apptId, payload)
-      toast({ title: "Deleted", description: "Appointment cancelled successfully", duration: 2000 })
-      setConfirmDeleteOpen(false)
+  const descParts: string[] = ["Appointment cancelled successfully"]
+  if (useWaitlist) descParts.push("waitlist notified")
+  toast({ title: "Deleted", description: descParts.join(' and '), duration: 2000 })
+      setWaitlistPopupOpen(false)
+      setWaitlistSelectedOption(null)
+      // Clear all delete-related state
+      setConfirmDeleteSlot(null)
+      setConfirmDeleteReason(undefined)
+      setConfirmDeleteNotes("")
+      setConfirmDeleteError(undefined)
       setSlotMenuSlotId(null)
+      setSlotMenuPatientIndex(null)
+      setSlotMenuPatientId(null)
       // Remove only the canceled appointment from the active appointments list
       setAppointments(prev => (prev || []).filter(a => String(a._id || a.id || a.appointment_id) !== String(apptId)))
       // Immediately add the cancelled appointment to the allAppointments (historical) list
@@ -761,6 +798,16 @@ export default function SchedulesPage() {
       }
       // Refresh server state in background to ensure consistency
       await refreshSlotsAndSchedules()
+      
+      // If "Select Patient" was clicked (use_waitlist = false), open the appointment drawer
+      if (mode === 'select' && currentView !== 'dayGridMonth') {
+        setApptInitialDate(slotDate)
+        setApptInitialLocation(slotLocation)
+        setApptInitialSlotId(deletedSlotId)
+        setApptInitialSlotTime(slotTime)
+        setApptInitialPatientIndex(typeof deletedPatientIndex === 'number' ? deletedPatientIndex : undefined)
+        setApptDrawerOpen(true)
+      }
     } catch (e: any) {
       toast({ title: "Failed", description: e?.message || "Could not cancel appointment", variant: "destructive", duration: 2000 })
     }
@@ -2552,6 +2599,86 @@ export default function SchedulesPage() {
               </div>
             </div>
           </aside>
+        </div>, document.body)
+      }
+
+      {/* Waitlist popup - shows after user clicks delete appointment button */}
+      {waitlistPopupOpen && createPortal(
+        <div className="fixed inset-0 z-[60]">
+          <div className="absolute inset-0 bg-black/30" onClick={() => {
+            setWaitlistPopupOpen(false)
+            setWaitlistSelectedOption(null)
+            // Clear state when closing without selection
+            setConfirmDeleteSlot(null)
+            setConfirmDeleteReason(undefined)
+            setConfirmDeleteNotes("")
+            setConfirmDeleteError(undefined)
+            setSlotMenuSlotId(null)
+            setSlotMenuPatientIndex(null)
+            setSlotMenuPatientId(null)
+          }} />
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-lg shadow-lg">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="text-lg font-semibold">Select Action</div>
+              <Button variant="ghost" size="icon" aria-label="Close" onClick={() => {
+                setWaitlistPopupOpen(false)
+                setWaitlistSelectedOption(null)
+                // Clear state when closing without selection
+                setConfirmDeleteSlot(null)
+                setConfirmDeleteReason(undefined)
+                setConfirmDeleteNotes("")
+                setConfirmDeleteError(undefined)
+                setSlotMenuSlotId(null)
+                setSlotMenuPatientIndex(null)
+                setSlotMenuPatientId(null)
+              }}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                What would you like to do for this slot?
+              </p>
+              
+              <div className="space-y-3">
+                <Button 
+                  className="w-full" 
+                  variant="default"
+                  onClick={() => {
+                    setWaitlistSelectedOption('waitlist')
+                    handleDeleteWithWaitlist('waitlist')
+                  }}
+                  disabled={deletingAppointment}
+                >
+                  {deletingAppointment && waitlistSelectedOption === 'waitlist' ? "Processing..." : "Use Waitlist"}
+                </Button>
+
+                <Button 
+                  className="w-full" 
+                  variant="outline"
+                  onClick={() => {
+                    setWaitlistSelectedOption('select')
+                    handleDeleteWithWaitlist('select')
+                  }}
+                  disabled={deletingAppointment}
+                >
+                  {deletingAppointment && waitlistSelectedOption === 'select' ? "Processing..." : "Add Patient Manually"}
+                </Button>
+
+                <Button
+                  className="w-full"
+                  variant="destructive"
+                  onClick={() => {
+                    setWaitlistSelectedOption('delete')
+                    handleDeleteWithWaitlist('delete')
+                  }}
+                  disabled={deletingAppointment}
+                >
+                  {deletingAppointment && waitlistSelectedOption === 'delete' ? 'Processing...' : 'Cancel Only'}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>, document.body)
       }
     </div>
