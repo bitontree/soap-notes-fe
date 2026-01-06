@@ -1242,7 +1242,8 @@ export const billingCodesApi = {
   async getICDCodes(payload: {
     user_id: string;
     patient_id: string;
-    soap_note_id: string;
+    soap_note_id?: string;
+    health_report_id?: string;
   }): Promise<ICDBillingCodeResponse> {
     const headers = {
       "Content-Type": "application/json",
@@ -1263,16 +1264,18 @@ export const billingCodesApi = {
   },
   
   // Search ICD codes by free text or code token. Calls backend /billingcodes/codes
-  async searchCodes(q: string, page: number = 1, limit: number = 5): Promise<Array<{ code?: string; description?: string }>> {
+  async searchCodes(q: string, page: number = 1, limit: number = 5, context?: { user_id?: string; patient_id?: string; soap_note_id?: string; health_report_id?: string }): Promise<Array<{ code?: string; description?: string }>> {
     const headers = {
       "Content-Type": "application/json",
       ...getAuthHeaders(),
       ...getApiKeyAuthHeaders(),
     };
 
-    const response = await apiRequest<any>(`/billingcodes/codes`, {
+    // Unified ICD endpoint: POST /billingcodes/icd with { q, page, limit }
+    const payload: any = { q, page, limit, ...(context || {}) }
+    const response = await apiRequest<any>(`/billingcodes/icd`, {
       method: "POST",
-      data: { q, page, limit },
+      data: payload,
       headers,
     });
 
@@ -1293,5 +1296,65 @@ export const billingCodesApi = {
     }
 
     return [];
+  }
+  ,
+  // ---------- Drugs API (RAG generation)
+  async getDrugBillingCodes(payload: {
+    user_id: string;
+    patient_id: string;
+    soap_note_id?: string;
+    health_report_id?: string;
+  }): Promise<ICDBillingCodeResponse> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    };
+
+    const response = await apiRequest<ICDBillingCodeResponse>("/billingcodes/drugs", {
+      method: "POST",
+      data: payload,
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to fetch drug billing codes");
+    }
+
+    return response.data!;
+  },
+  
+
+  // Convenience wrapper to route generation requests by type
+  async generateForType(type: "icd" | "drugs" | "cpt" | "hcpcs", payload: { user_id: string; patient_id: string; soap_note_id?: string; health_report_id?: string; }): Promise<ICDBillingCodeResponse> {
+    if (type === "icd") return await this.getICDCodes(payload as any);
+    if (type === "drugs") return await this.getDrugBillingCodes(payload as any);
+    // For CPT/HCPCS backend endpoints are not defined here; fallback to ICD structure
+    return await this.getICDCodes(payload);
+  },
+
+  // Convenience wrapper to route search/lookups by selected type
+  async searchByType(type: "icd" | "drugs" | "cpt" | "hcpcs", q: string, page: number = 1, limit: number = 5, context?: { user_id?: string; patient_id?: string; soap_note_id?: string; health_report_id?: string }): Promise<any[]> {
+    if (type === "icd") return await this.searchCodes(q, page, limit, context);
+
+    if (type === "drugs") {
+      const headers = {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+        ...getApiKeyAuthHeaders(),
+      };
+      const resp = await apiRequest<any>(`/billingcodes/drugs`, {
+        method: "POST",
+        data: { q, ...(context || {}) },
+        headers,
+      });
+      if (!resp.success) throw new Error(resp.message || "Failed to lookup drug code");
+      const data = resp.data || [];
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.results)) return data.results;
+      return [];
+    }
+
+    // CPT/HCPCS: fallback to ICD search for now
+    return await this.searchCodes(q, page, limit, context);
   }
 };
