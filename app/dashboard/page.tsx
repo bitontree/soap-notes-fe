@@ -36,6 +36,7 @@ export default function DashboardPage() {
   const [icdPageSize, setIcdPageSize] = useState<number>(10)
   const [icdHasMore, setIcdHasMore] = useState<boolean>(false)
   const [selectedCodeType, setSelectedCodeType] = useState<'icd' | 'drugs' | 'cpt' | 'hcpcs'>('icd')
+  const [icdBillingId, setIcdBillingId] = useState<string | null>(null)
 
 
   useEffect(() => {
@@ -144,6 +145,7 @@ export default function DashboardPage() {
       }
       const codes = (response && response.codes) ? response.codes : []
       setIcdCodes(codes)
+      setIcdBillingId(response?.id ?? null)
       const codeKeys = (codes || []).map((c: any) => String(c.code || ""))
       setSelectedIcdCodesSet(new Set(codeKeys))
       setIcdOriginalSelection(codeKeys)
@@ -219,9 +221,36 @@ export default function DashboardPage() {
   }
 
   const handleSaveIcdSelection = () => {
-    const selected = Array.from(selectedIcdCodesSet)
-    console.log('Saving ICD selection for note', selectedNote?.id, selected)
-    setIsViewModalOpen(false)
+    (async () => {
+      const selected = Array.from(selectedIcdCodesSet)
+      if (!icdBillingId) {
+        toast({ title: 'Error', description: 'Missing billing document id. Cannot save codes.', variant: 'destructive' })
+        return
+      }
+
+      const items = icdCodes
+        .filter(c => selected.includes(String(c.code)))
+        .map(c => ({
+          soap_note_id: (c as any).soap_note_id || '',
+          health_report_id: (c as any).health_report_id || undefined,
+          code_type: (c as any).code_type || selectedCodeType,
+          code: c.code,
+          description: (c as any).description || ''
+        }))
+
+      try {
+        setIsLoadingIcdCodes(true)
+        await billingCodesApi.addSavedCodes(icdBillingId, items)
+        toast({ title: 'Saved', description: 'Billing codes saved successfully' })
+        setIcdOriginalSelection(items.map((it: any) => String(it.code)))
+        setIsViewModalOpen(false)
+      } catch (error: any) {
+        console.error('Failed to save ICD codes:', error)
+        toast({ title: 'Error', description: error?.message || 'Failed to save billing codes', variant: 'destructive' })
+      } finally {
+        setIsLoadingIcdCodes(false)
+      }
+    })()
   }
 
   const handleCancelIcdSelection = () => {

@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { soapApi, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api"
+import { icdBus } from '@/lib/icdBus'
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
@@ -53,9 +54,10 @@ export default function HistoryPage() {
   const [isLoadingIcdCodes, setIsLoadingIcdCodes] = useState(false)
   const [selectedIcdCodesSet, setSelectedIcdCodesSet] = useState<Set<string>>(new Set())
   const [icdOriginalSelection, setIcdOriginalSelection] = useState<string[]>([])
+  const [icdBillingId, setIcdBillingId] = useState<string | null>(null)
   // ICD search UI state for modal
   const [icdQuery, setIcdQuery] = useState<string>("")
-  const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string }>>([])
+  const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string; intent?: string }>>([])
   const [isSearchingIcd, setIsSearchingIcd] = useState<boolean>(false)
   const [icdPage, setIcdPage] = useState<number>(1)
   const [icdPageSize, setIcdPageSize] = useState<number>(10)
@@ -261,6 +263,7 @@ export default function HistoryPage() {
 
       const codes = (response && response.codes) ? response.codes : []
       setIcdCodes(codes)
+      setIcdBillingId(response?.id ?? null)
       const codeKeys = (codes || []).map((c: any) => String(c.code || ""))
       setSelectedIcdCodesSet(new Set(codeKeys))
       setIcdOriginalSelection(codeKeys)
@@ -288,6 +291,35 @@ export default function HistoryPage() {
     }
   }, [selectedCodeType])
 
+  // Subscribe to global ICD events so the modal updates whenever ICD API returns
+  useEffect(() => {
+    const unsub = icdBus.subscribe((ev) => {
+      if (!isViewModalOpen) return
+      try {
+        if (ev.kind === 'codes') {
+          const resp = ev.payload
+          // only update if codes are relevant to current selected note's patient/user
+          setIcdCodes(resp.codes || [])
+          setIcdBillingId(resp.id ?? null)
+          const codeKeys = (resp.codes || []).map((c: any) => String(c.code || ""))
+          setSelectedIcdCodesSet(new Set(codeKeys))
+          setIcdOriginalSelection(codeKeys)
+          setIsLoadingIcdCodes(false)
+        }
+        if (ev.kind === 'search') {
+          // map to search result shape
+          const results = (ev.payload || []).map((it: any) => ({ code: it.code, description: it.description, intent: it.intent }))
+          setIcdSearchResults(results)
+          setIsSearchingIcd(false)
+        }
+      } catch (e) {
+        console.warn('Error handling icdBus event', e)
+      }
+    })
+
+    return () => { unsub(); }
+  }, [isViewModalOpen, selectedNote])
+
   const toggleIcdSelection = (code?: string) => {
     if (!code) return
     setSelectedIcdCodesSet((prev) => {
@@ -298,11 +330,35 @@ export default function HistoryPage() {
     })
   }
 
-  const handleSaveIcdSelection = () => {
-    // For now, just log selection. Persistence will be implemented later.
+  const handleSaveIcdSelection = async () => {
     const selected = Array.from(selectedIcdCodesSet)
-    console.log('Saving ICD selection for note', selectedNote?.id, selected)
-    setIsViewModalOpen(false)
+    if (!icdBillingId) {
+      toast({ title: 'Error', description: 'Missing billing document id. Cannot save codes.', variant: 'destructive' })
+      return
+    }
+
+    const items = icdCodes
+      .filter(c => selected.includes(String(c.code)))
+      .map(c => ({
+        soap_note_id: (c as any).soap_note_id || '',
+        health_report_id: (c as any).health_report_id || undefined,
+        code_type: (c as any).code_type || selectedCodeType,
+        code: c.code,
+        description: (c as any).description || ''
+      }))
+
+    try {
+      setIsLoadingIcdCodes(true)
+      await billingCodesApi.addSavedCodes(icdBillingId, items)
+      toast({ title: 'Saved', description: 'Billing codes saved successfully' })
+      setIcdOriginalSelection(items.map((it: any) => String(it.code)))
+      setIsViewModalOpen(false)
+    } catch (error: any) {
+      console.error('Failed to save ICD codes:', error)
+      toast({ title: 'Error', description: error?.message || 'Failed to save billing codes', variant: 'destructive' })
+    } finally {
+      setIsLoadingIcdCodes(false)
+    }
   }
 
   const handleCancelIcdSelection = () => {
@@ -337,8 +393,12 @@ export default function HistoryPage() {
       else if (noteId) context.soap_note_id = noteId
 
       const rawResults = await billingCodesApi.searchByType(selectedCodeType, query, pageToUse, limitToUse, context)
-      // Normalize results to {code, description}
-      const results = (rawResults || []).map((it: any) => ({ code: it.code || it.Code || it.code_value || '', description: it.description || it.name || it.intent || '' }))
+      // Normalize results to {code, description, intent}
+      const results = (rawResults || []).map((it: any) => ({
+        code: it.code || it.Code || it.code_value || '',
+        description: it.description || it.name || '',
+        intent: it.intent || ''
+      }))
       setIcdSearchResults(results)
       setIcdPage(pageToUse)
       setIcdPageSize(limitToUse)
@@ -805,18 +865,25 @@ export default function HistoryPage() {
                             <div className="space-y-2 mt-2">
                               {icdSearchResults.map((r, idx) => (
                                 <div key={idx} className="flex items-center justify-between rounded border p-3">
-                                  <div className="flex items-center gap-3">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedIcdCodesSet.has(String(r.code || ""))}
-                                      onChange={() => toggleIcdSelection(String(r.code || ""))}
-                                      className="h-4 w-4"
-                                    />
-                                    <Badge variant="secondary" className="font-mono">{r.code}</Badge>
-                                    <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 w-full">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedIcdCodesSet.has(String(r.code || ""))}
+                                        onChange={() => toggleIcdSelection(String(r.code || ""))}
+                                        className="h-4 w-4"
+                                      />
+                                      <Badge variant="secondary" className="font-mono">{r.code}</Badge>
+                                    </div>
+                                    <div className="flex-1 mt-2 sm:mt-0">
+                                      <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
+                                      {selectedCodeType === 'drugs' && r.intent && (
+                                        <div className="text-xs text-gray-500 mt-1">Intent: {r.intent}</div>
+                                      )}
+                                    </div>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${r.code} - ${r.description || ''}`)}>
+                                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${r.code} - ${r.description || ''}${r.intent ? ' - Intent: ' + r.intent : ''}`)}>
                                       <Copy className="h-4 w-4" />
                                     </Button>
                                   </div>
@@ -850,18 +917,25 @@ export default function HistoryPage() {
                               <div className="space-y-3">
                                 {list.map((ic, idx) => (
                                   <div key={idx} className="flex items-center justify-between rounded border p-3">
-                                    <div className="flex items-center gap-3">
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedIcdCodesSet.has(String(ic.code || ""))}
-                                        onChange={() => toggleIcdSelection(String(ic.code || ""))}
-                                        className="h-4 w-4"
-                                      />
-                                      <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
-                                      <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 w-full">
+                                      <div className="flex items-center gap-3">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedIcdCodesSet.has(String(ic.code || ""))}
+                                          onChange={() => toggleIcdSelection(String(ic.code || ""))}
+                                          className="h-4 w-4"
+                                        />
+                                        <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
+                                      </div>
+                                      <div className="flex-1 mt-2 sm:mt-0">
+                                        <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                        {selectedCodeType === 'drugs' && (ic as any).intent && (
+                                          <div className="text-xs text-gray-500 mt-1">Intent: {(ic as any).intent}</div>
+                                        )}
+                                      </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}`)}>
+                                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}${(ic as any).intent ? ' - Intent: ' + (ic as any).intent : ''}`)}>
                                         <Copy className="h-4 w-4" />
                                       </Button>
                                     </div>

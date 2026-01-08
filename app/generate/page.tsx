@@ -130,6 +130,7 @@ export default function GeneratePage() {
   const [icdHasMore, setIcdHasMore] = useState<boolean>(false)
   const [selectedIcdCodesSet, setSelectedIcdCodesSet] = useState<Set<string>>(new Set())
   const [icdOriginalSelection, setIcdOriginalSelection] = useState<string[]>([])
+  const [icdBillingId, setIcdBillingId] = useState<string | null>(null)
   
   // Refs for audio recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -218,6 +219,7 @@ export default function GeneratePage() {
           diarized_transcript: data.diarized_transcript || "",
           icdCodes: data.billing_codes?.codes || []
         })
+        setIcdBillingId(data.billing_codes?.id ?? null)
         // initialize selection to returned codes
         const returned = (data.billing_codes?.codes || []).map((c:any) => String(c.code || ""))
         setSelectedIcdCodesSet(new Set(returned))
@@ -273,13 +275,37 @@ export default function GeneratePage() {
   }
 
   const handleSaveIcdSelection = () => {
-    if (!soapNote) return
-    const selected = Array.from(selectedIcdCodesSet)
-    // filter existing items to those selected
-    const newList = (soapNote.icdCodes || []).filter((c:any) => selected.includes(String(c.code || "")))
-    setSOAPNote({ ...soapNote, icdCodes: newList })
-    setIcdOriginalSelection(selected)
-    console.log('Saved ICD selection', selected)
+    return (async () => {
+      if (!soapNote) return
+      const selected = Array.from(selectedIcdCodesSet)
+      if (!icdBillingId) {
+        toast({ title: 'Error', description: 'Missing billing document id. Cannot save codes.', variant: 'destructive' })
+        return
+      }
+
+      const items = (soapNote.icdCodes || [])
+        .filter((c:any) => selected.includes(String(c.code || "")))
+        .map((c:any) => ({
+          soap_note_id: c.soap_note_id || '',
+          health_report_id: c.health_report_id || undefined,
+          code_type: c.code_type || 'icd',
+          code: c.code,
+          description: c.description || ''
+        }))
+
+      try {
+        setIsSearchingIcd(true)
+        await billingCodesApi.addSavedCodes(icdBillingId, items)
+        setSOAPNote({ ...soapNote, icdCodes: items })
+        setIcdOriginalSelection(items.map((it:any) => String(it.code)))
+        toast({ title: 'Saved', description: 'Billing codes saved successfully' })
+      } catch (error: any) {
+        console.error('Failed to save ICD codes:', error)
+        toast({ title: 'Error', description: error?.message || 'Failed to save billing codes', variant: 'destructive' })
+      } finally {
+        setIsSearchingIcd(false)
+      }
+    })()
   }
 
   const handleCancelIcdSelection = () => {
