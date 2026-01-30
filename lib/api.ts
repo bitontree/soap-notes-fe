@@ -458,7 +458,7 @@ export async function uploadHealthReportApi(
         ...authHeaders,
         ...apiKeyHeaders,
       },
-      timeout: 60000,
+      timeout: 0, // No timeout - wait indefinitely for health report parsing
       onUploadProgress: (e: any) => {
         if (e.total && onUploadProgress) {
           onUploadProgress(Math.round((e.loaded * 100) / e.total));
@@ -525,7 +525,7 @@ export async function parseHealthReportApi(
           onUploadProgress(Math.round((e.loaded * 100) / e.total));
         }
       },
-      timeout: 60000,
+      timeout: 0, // No timeout - wait indefinitely for health report parsing
     } as any
   );
 
@@ -665,7 +665,7 @@ export const soapApi = {
               onUploadProgress(percentCompleted);
             }
           },
-          timeout: 180000, // 60 seconds
+          timeout: 0, // No timeout - wait indefinitely for SOAP note generation
         } as any
       );
 

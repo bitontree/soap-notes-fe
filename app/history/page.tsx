@@ -296,25 +296,23 @@ export default function HistoryPage() {
     const unsub = icdBus.subscribe((ev) => {
       if (!isViewModalOpen) return
       try {
-        if (ev.kind === 'codes') {
-          const resp = ev.payload
-          // only update if codes are relevant to current selected note's patient/user
-          setIcdCodes(resp.codes || [])
-          setIcdBillingId(resp.id ?? null)
-          const codeKeys = (resp.codes || []).map((c: any) => String(c.code || ""))
-          setSelectedIcdCodesSet(new Set(codeKeys))
-          setIcdOriginalSelection(codeKeys)
-          setIsLoadingIcdCodes(false)
+          if (ev.kind === 'codes') {
+            const resp = ev.payload
+            // only update if codes are relevant to current selected note's patient/user
+            setIcdCodes(resp.codes || [])
+            setIcdBillingId(resp.id ?? null)
+            const codeKeys = (resp.codes || []).map((c: any) => String(c.code || ""))
+            setSelectedIcdCodesSet(new Set(codeKeys))
+            setIcdOriginalSelection(codeKeys)
+            setIsLoadingIcdCodes(false)
+          }
+          // NOTE: Ignore global 'search' events here to avoid stale search results
+          // being emitted from other parts of the app and overwriting this modal's
+          // local search results. This component calls `searchIcdCodes` directly
+          // and sets `icdSearchResults` on completion.
+        } catch (e) {
+          console.warn('Error handling icdBus event', e)
         }
-        if (ev.kind === 'search') {
-          // map to search result shape
-          const results = (ev.payload || []).map((it: any) => ({ code: it.code, description: it.description, intent: it.intent }))
-          setIcdSearchResults(results)
-          setIsSearchingIcd(false)
-        }
-      } catch (e) {
-        console.warn('Error handling icdBus event', e)
-      }
     })
 
     return () => { unsub(); }
@@ -374,10 +372,14 @@ export default function HistoryPage() {
       setIcdHasMore(false)
       return
     }
-
     const pageToUse = page ?? icdPage ?? 1
     const limitToUse = limit ?? icdPageSize ?? 10
 
+    // Clear previous search results immediately so the UI doesn't keep showing stale data
+    setIcdSearchResults([])
+    setIcdHasMore(false)
+    setIcdPage(pageToUse)
+    setIcdPageSize(limitToUse)
     setIsSearchingIcd(true)
     try {
       // Build optional context: send user_id, patient_id and note identifiers when available
