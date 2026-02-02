@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { FileText, Clock, TrendingUp, TrendingDown, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
 import { soapApi, getDashboardStats, type DashboardStats, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api" 
 import { useToast } from "@/hooks/use-toast"
@@ -17,6 +18,7 @@ import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 
 export default function DashboardPage() {
   const [recentNotes, setRecentNotes] = useState<any[]>([])
+  const [isNotesLoading, setIsNotesLoading] = useState<boolean>(true)
   const { toast } = useToast()
   const { user } = useAuth()
   const [selectedNote, setSelectedNote] = useState<any | null>(null)
@@ -41,6 +43,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchNotes = async () => {
+      setIsNotesLoading(true)
       try {
   const data = await soapApi.getNotes({ page: 1, limit: 3 }) // page=1, limit=3
         setRecentNotes(data.soap_notes || [])
@@ -50,6 +53,8 @@ export default function DashboardPage() {
           description: error.message || "Failed to fetch recent SOAP notes",
           variant: "destructive",
         })
+      } finally {
+        setIsNotesLoading(false)
       }
     }
     fetchNotes()
@@ -270,11 +275,24 @@ export default function DashboardPage() {
               <FileText className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.totalNotes}</div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.totalNotesPct != null ? `${stats.changes.totalNotesPct > 0 ? '+' : ''}${stats.changes.totalNotesPct}% from last month` : 'Updated now')}
-              </div>
+              {isStatsLoading ? (
+                <div className="space-y-3">
+                  <div className="h-7 w-12 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                  <div className="h-3 w-32 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">{stats.totalNotes}</div>
+                  <div className="flex items-center text-xs text-gray-600 mt-1">
+                    {stats.changes?.totalNotesPct != null && stats.changes.totalNotesPct < 0 ? (
+                      <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                    ) : (
+                      <TrendingUp className={`h-3 w-3 mr-1 ${stats.changes?.totalNotesPct != null && stats.changes.totalNotesPct > 0 ? 'text-green-600' : ''}`} />
+                    )}
+                    {stats.changes?.totalNotesPct != null ? `${stats.changes.totalNotesPct > 0 ? '+' : ''}${stats.changes.totalNotesPct}% from last month` : 'Updated now'}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -284,11 +302,24 @@ export default function DashboardPage() {
               <Calendar className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.thisWeek}</div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.thisWeekPct != null ? `${stats.changes.thisWeekPct > 0 ? '+' : ''}${stats.changes.thisWeekPct}% from last week` : 'Last 7 days')}
-              </div>
+              {isStatsLoading ? (
+                <div className="space-y-3">
+                  <div className="h-7 w-10 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                  <div className="h-3 w-20 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">{stats.thisWeek}</div>
+                  <div className="flex items-center text-xs text-gray-600 mt-1">
+                    {stats.changes?.thisWeekPct != null && stats.changes.thisWeekPct < 0 ? (
+                      <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                    ) : (
+                      <TrendingUp className={`h-3 w-3 mr-1 ${stats.changes?.thisWeekPct != null && stats.changes.thisWeekPct > 0 ? 'text-green-600' : ''}`} />
+                    )}
+                    {stats.changes?.thisWeekPct != null ? `${stats.changes.thisWeekPct > 0 ? '+' : ''}${stats.changes.thisWeekPct}% from last week` : 'Last 7 days'}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -298,13 +329,26 @@ export default function DashboardPage() {
               <Clock className="h-4 w-4 text-orange-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {isStatsLoading ? '—' : (stats.avgProcessingTimeMs == null ? '—' : `${(stats.avgProcessingTimeMs / 60000).toFixed(1)}m`)}
-              </div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.avgProcessingTimePct != null ? `${stats.changes.avgProcessingTimePct > 0 ? '+' : ''}${stats.changes.avgProcessingTimePct}% vs last month` : 'Based on recent records')}
-              </div>
+              {isStatsLoading ? (
+                <div className="space-y-3">
+                  <div className="h-7 w-12 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                  <div className="h-3 w-32 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {stats.avgProcessingTimeMs == null ? '—' : `${(stats.avgProcessingTimeMs / 60000).toFixed(1)}m`}
+                  </div>
+                  <div className="flex items-center text-xs text-gray-600 mt-1">
+                    {stats.changes?.avgProcessingTimePct != null && stats.changes.avgProcessingTimePct < 0 ? (
+                      <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                    ) : (
+                      <TrendingUp className={`h-3 w-3 mr-1 ${stats.changes?.avgProcessingTimePct != null && stats.changes.avgProcessingTimePct > 0 ? 'text-green-600' : ''}`} />
+                    )}
+                    {stats.changes?.avgProcessingTimePct != null ? `${stats.changes.avgProcessingTimePct > 0 ? '+' : ''}${stats.changes.avgProcessingTimePct}% vs last month` : 'Based on recent records'}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -314,11 +358,24 @@ export default function DashboardPage() {
               <Users className="h-4 w-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.activePatients}</div>
-                <div className="flex items-center text-xs text-gray-600 mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.activePatientsPct != null ? `${stats.changes.activePatientsPct > 0 ? '+' : ''}${stats.changes.activePatientsPct}% from last month` : 'Patients in system')}
+              {isStatsLoading ? (
+                <div className="space-y-3">
+                  <div className="h-7 w-10 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                  <div className="h-3 w-28 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
                 </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">{stats.activePatients}</div>
+                  <div className="flex items-center text-xs text-gray-600 mt-1">
+                    {stats.changes?.activePatientsPct != null && stats.changes.activePatientsPct < 0 ? (
+                      <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                    ) : (
+                      <TrendingUp className={`h-3 w-3 mr-1 ${stats.changes?.activePatientsPct != null && stats.changes.activePatientsPct > 0 ? 'text-green-600' : ''}`} />
+                    )}
+                    {stats.changes?.activePatientsPct != null ? `${stats.changes.activePatientsPct > 0 ? '+' : ''}${stats.changes.activePatientsPct}% from last month` : 'Patients in system'}
+                  </div>
+                </>
+              )}
               </CardContent>
             </Card>
         </div>
@@ -366,7 +423,18 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentNotes.length > 0 ? (
+                {isNotesLoading ? (
+                  // Minimalistic skeleton loaders
+                  [...Array(3)].map((_, i) => (
+                    <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-gray-100">
+                      <div className="flex-1 space-y-2.5">
+                        <div className="h-4 w-28 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                        <div className="h-3 w-40 bg-gradient-to-r from-gray-50 via-gray-100 to-gray-50 rounded animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
+                      </div>
+                      <div className="h-8 w-16 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                    </div>
+                  ))
+                ) : recentNotes.length > 0 ? (
                   recentNotes.map((note) => (
                     <div key={note.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex-1">

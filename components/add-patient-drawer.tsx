@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { parseISO, isBefore, isValid, subDays, startOfToday } from "date-fns"
+import { parseISO, isBefore, isValid, subDays, startOfToday, differenceInYears } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -162,8 +162,24 @@ export default function AddPatientDrawer({ open, onOpenChange, onCreated }: { op
               </div>
 
               <div className="space-y-2">
+                <Label>Date of Birth <span className="text-red-500">*</span></Label>
+                <DatePicker value={form.dob || null} onChange={(v) => {
+                  const newDob = v ?? ""
+                  let calculatedAge = ""
+                  if (newDob) {
+                    const dobDate = parseISO(newDob)
+                    if (isValid(dobDate) && isBefore(dobDate, startOfToday())) {
+                      calculatedAge = String(differenceInYears(startOfToday(), dobDate))
+                    }
+                  }
+                  setForm({ ...form, dob: newDob, age: calculatedAge })
+                  setFieldErrors(prev => ({ ...prev, age: undefined }))
+                }} maxDate={latestDob} minDate={earliestDob} placeholder="Select date" />
+              </div>
+
+              <div className="space-y-2">
                 <Label>Age <span className="text-red-500">*</span></Label>
-                <Input type="number" min={0} max={150} value={form.age} onChange={(e) => { setForm({ ...form, age: e.target.value }); setFieldErrors(prev => ({ ...prev, age: undefined })) }} placeholder="30" className={fieldErrors.age ? 'border-red-500' : ''} />
+                <Input type="number" min={0} max={150} value={form.age} readOnly disabled placeholder="Auto-calculated from DOB" className={`${fieldErrors.age ? 'border-red-500' : ''} bg-muted`} />
                 {fieldErrors.age && <p className="text-sm text-red-500">{fieldErrors.age}</p>}
               </div>
 
@@ -179,11 +195,6 @@ export default function AddPatientDrawer({ open, onOpenChange, onCreated }: { op
                     <SelectItem value="Other">Other</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Date of Birth <span className="text-red-500">*</span></Label>
-                <DatePicker value={form.dob || null} onChange={(v) => setForm({ ...form, dob: v ?? "" })} maxDate={latestDob} minDate={earliestDob} placeholder="Select date" />
               </div>
 
               <div className="space-y-2">
