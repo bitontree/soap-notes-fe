@@ -21,6 +21,7 @@ import timeGridPlugin from "@fullcalendar/timegrid"
 import interactionPlugin from "@fullcalendar/interaction"
 import { AppointmentDrawer } from "../../components/schedule/appointment-drawer"
 import { RescheduleDrawer } from "@/components/schedule/reschedule-drawer"
+import { DatePicker } from "@/components/ui/date-picker"
 import { X } from "lucide-react"
 import { createPortal } from "react-dom"
 import { color } from "html2canvas/dist/types/css/types/color"
@@ -2269,16 +2270,17 @@ export default function SchedulesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Start Date</Label>
-                    <Input
-                      type="date"
-                      min={new Date().toISOString().slice(0,10)}
-                      value={startDate}
-                      onChange={e => {
-                        const v = e.target.value
-                        setStartDate(v)
-                        setFormValue("start_date", v, { shouldDirty: true })
+                    <DatePicker
+                      value={startDate || null}
+                      minDate={new Date()}
+                      maxDate={new Date(new Date().getFullYear() + 10, 11, 31)}
+                      placeholder="Select start date"
+                      onChange={(v) => {
+                        const val = v || ""
+                        setStartDate(val)
+                        setFormValue("start_date", val, { shouldDirty: true })
                         // If endDate is before new startDate, clear it
-                        if (endDate && endDate < v) {
+                        if (endDate && val && endDate < val) {
                           setEndDate("")
                           setFormValue("end_date", "", { shouldDirty: true })
                         }
@@ -2287,11 +2289,16 @@ export default function SchedulesPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>End Date</Label>
-                    <Input
-                      type="date"
-                      min={(startDate && startDate > new Date().toISOString().slice(0,10)) ? startDate : new Date().toISOString().slice(0,10)}
-                      value={endDate}
-                      onChange={e => { setEndDate(e.target.value); setFormValue("end_date", e.target.value, { shouldDirty: true }) }}
+                    <DatePicker
+                      value={endDate || null}
+                      minDate={startDate ? new Date(startDate) : new Date()}
+                      maxDate={new Date(new Date().getFullYear() + 10, 11, 31)}
+                      placeholder="Select end date"
+                      onChange={(v) => {
+                        const val = v || ""
+                        setEndDate(val)
+                        setFormValue("end_date", val, { shouldDirty: true })
+                      }}
                     />
                   </div>
                 </div>

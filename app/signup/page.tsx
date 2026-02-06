@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/contexts/auth-context"
-import { Stethoscope, Loader2, Eye, EyeOff } from "lucide-react"
+import { Stethoscope, Loader2, Eye, EyeOff, Shield } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useNameValidation } from "@/hooks/use-name-validation"
 import { useEmailValidation } from "@/hooks/use-email-validation"
@@ -154,22 +154,28 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-blue-100 rounded-full">
-              <Stethoscope className="h-8 w-8 text-blue-600" />
+    <div className="min-h-screen flex items-center justify-center p-8 bg-slate-50">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-900 rounded-xl">
+              <Stethoscope className="h-6 w-6 text-white" />
             </div>
+            <span className="text-xl font-semibold text-blue-900">SOAP Notes</span>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">Create Account</CardTitle>
-          <CardDescription>Join SOAP Medical Notes today</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" data-form-type="signup">
+        </div>
+
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="text-center pb-4">
+            <CardTitle className="text-2xl font-semibold text-slate-800">Create Account</CardTitle>
+            <CardDescription className="text-slate-500">Join SOAP Medical Notes today</CardDescription>
+          </CardHeader>
+          <CardContent className="px-8 pb-8">
+          <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off" data-form-type="signup">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstname">First Name <span className="text-red-500">*</span></Label>
+                <Label htmlFor="firstname" className="text-sm font-medium text-slate-600">First Name</Label>
                 <Input
                   id="firstname"
                   name="firstname"
@@ -178,7 +184,7 @@ export default function SignupPage() {
                   value={firstNameValidation.value}
                   onChange={firstNameValidation.handleChange}
                   onBlur={firstNameValidation.handleBlur}
-                  className={firstNameValidation.displayError ? "border-red-500" : ""}
+                  className={`h-11 rounded-lg bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-all ${firstNameValidation.displayError ? "border-red-400" : ""}`}
                   autoComplete="given-name"
                   required
                 />
@@ -187,7 +193,7 @@ export default function SignupPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastname">Last Name <span className="text-red-500">*</span></Label>
+                <Label htmlFor="lastname" className="text-sm font-medium text-slate-600">Last Name</Label>
                 <Input
                   id="lastname"
                   name="lastname"
@@ -196,7 +202,7 @@ export default function SignupPage() {
                   value={lastNameValidation.value}
                   onChange={lastNameValidation.handleChange}
                   onBlur={lastNameValidation.handleBlur}
-                  className={lastNameValidation.displayError ? "border-red-500" : ""}
+                  className={`h-11 rounded-lg bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-all ${lastNameValidation.displayError ? "border-red-400" : ""}`}
                   autoComplete="family-name"
                   required
                 />
@@ -206,7 +212,7 @@ export default function SignupPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
+              <Label htmlFor="email" className="text-sm font-medium text-slate-600">Email</Label>
               <Input
                 id="email"
                 name="signup-email"
@@ -215,7 +221,7 @@ export default function SignupPage() {
                 value={emailValidation.value}
                 onChange={emailValidation.handleChange}
                 autoComplete="new-email"
-                className={emailValidation.error ? "border-red-500" : ""}
+                className={`h-11 rounded-lg bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-all ${emailValidation.error ? "border-red-400" : ""}`}
                 required
               />
               {emailValidation.error && (
@@ -223,7 +229,7 @@ export default function SignupPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
+              <Label htmlFor="password" className="text-sm font-medium text-slate-600">Password</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -232,13 +238,13 @@ export default function SignupPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
-                  className={`pr-10 ${password.length > 0 && password.length < 6 ? "border-red-500" : ""}`}
+                  className={`h-11 rounded-lg bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 pr-11 transition-all ${password.length > 0 && password.length < 6 ? "border-red-400" : ""}`}
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   {showPassword ? (
                     <Eye className="h-4 w-4" />
@@ -255,7 +261,7 @@ export default function SignupPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password <span className="text-red-500">*</span></Label>
+              <Label htmlFor="confirmPassword" className="text-sm font-medium text-slate-600">Confirm Password</Label>
               <div className="relative">
                 <Input
                   id="confirmPassword"
@@ -264,13 +270,13 @@ export default function SignupPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   autoComplete="new-password"
-                  className={`pr-10 ${confirmPassword.length > 0 && password !== confirmPassword ? "border-red-500" : ""}`}
+                  className={`h-11 rounded-lg bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 pr-11 transition-all ${confirmPassword.length > 0 && password !== confirmPassword ? "border-red-400" : ""}`}
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   {showConfirmPassword ? (
                     <Eye className="h-4 w-4" />
@@ -283,7 +289,7 @@ export default function SignupPage() {
                 <p className="text-sm text-red-500">Passwords do not match</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full h-11 bg-blue-900 hover:bg-blue-800 text-white font-medium rounded-lg transition-colors" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -295,17 +301,22 @@ export default function SignupPage() {
             </Button>
           </form>
 
-          
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
+          <div className="mt-6 pt-6 border-t border-slate-100 text-center">
+            <p className="text-sm text-slate-600">
               Already have an account?{" "}
-              <Link href="/login" className="text-blue-600 hover:underline">
+              <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium">
                 Sign in
               </Link>
             </p>
           </div>
         </CardContent>
       </Card>
+
+      <p className="text-center text-xs text-slate-500 mt-6 flex items-center justify-center gap-1.5">
+        <Shield className="h-3.5 w-3.5 text-emerald-600" />
+        Protected by HIPAA-compliant security
+      </p>
+      </div>
     </div>
   )
 }

@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { soapApi, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api"
+import { icdBus } from "@/lib/icdBus"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 import PatientSelector from "@/components/patient-selector" 
 import { useAuth } from "@/contexts/auth-context"
@@ -123,7 +124,7 @@ export default function GeneratePage() {
 
   // ICD search UI state (used inside the generated note ICD tab)
   const [icdQuery, setIcdQuery] = useState<string>("")
-  const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string }>>([])
+  const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string; intent?: string }>>([])
   const [isSearchingIcd, setIsSearchingIcd] = useState<boolean>(false)
   const [icdPage, setIcdPage] = useState<number>(1)
   const [icdPageSize, setIcdPageSize] = useState<number>(10)
@@ -263,6 +264,29 @@ export default function GeneratePage() {
     setSelectedIcdCodesSet(new Set(codes))
     setIcdOriginalSelection(codes)
   }, [soapNote?.icdCodes])
+
+  // Sync billing codes from global ICD bus while a note is shown
+  useEffect(() => {
+    const unsub = icdBus.subscribe((ev) => {
+      if (!soapNote) return
+      try {
+        if (ev.kind === "codes") {
+          const resp = ev.payload as any
+          const nextCodes = resp.codes || []
+          setSOAPNote({ ...soapNote, icdCodes: nextCodes })
+          setIcdBillingId(resp.id ?? null)
+          const codeKeys = (nextCodes || []).map((c: any) => String(c.code || ""))
+          setSelectedIcdCodesSet(new Set(codeKeys))
+          setIcdOriginalSelection(codeKeys)
+        }
+        // Ignore global search events to avoid overwriting local search results
+      } catch (e) {
+        console.warn("Error handling icdBus event", e)
+      }
+    })
+
+    return () => { unsub() }
+  }, [soapNote])
 
   const toggleIcdSelection = (code?: string) => {
     if (!code) return
@@ -528,6 +552,11 @@ export default function GeneratePage() {
     const pageToUse = page ?? icdPage ?? 1
     const limitToUse = limit ?? icdPageSize ?? 10
 
+    // Clear previous results immediately to avoid showing stale data
+    setIcdSearchResults([])
+    setIcdHasMore(false)
+    setIcdPage(pageToUse)
+    setIcdPageSize(limitToUse)
     setIsSearchingIcd(true)
     try {
       const userId = user?.id
@@ -541,8 +570,20 @@ export default function GeneratePage() {
       if (healthReportId) context.health_report_id = healthReportId
       else if (noteId) context.soap_note_id = noteId
 
-      const results = await billingCodesApi.searchCodes(query, pageToUse, limitToUse, context)
-      setIcdSearchResults(results || [])
+      const rawResults = await billingCodesApi.searchCodes(query, pageToUse, limitToUse, context)
+      const normalizedArray = Array.isArray(rawResults)
+        ? rawResults
+        : Array.isArray((rawResults as any)?.results)
+          ? (rawResults as any).results
+          : Array.isArray((rawResults as any)?.codes)
+            ? (rawResults as any).codes
+            : []
+      const results = normalizedArray.map((it: any) => ({
+        code: it.code || it.Code || it.code_value || it.icd_code || '',
+        description: it.description || it.Description || it.name || '',
+        intent: it.intent || ''
+      }))
+      setIcdSearchResults(results)
       setIcdPage(pageToUse)
       setIcdPageSize(limitToUse)
       setIcdHasMore((results?.length ?? 0) >= limitToUse)
@@ -977,18 +1018,25 @@ export default function GeneratePage() {
                         <div className="space-y-2 mt-2">
                           {icdSearchResults.map((r, idx) => (
                             <div key={idx} className="flex items-center justify-between rounded border p-3">
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedIcdCodesSet.has(String(r.code || ""))}
-                                  onChange={() => toggleIcdSelection(String(r.code || ""))}
-                                  className="h-4 w-4"
-                                />
-                                <Badge variant="secondary" className="font-mono">{r.code}</Badge>
-                                <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 w-full">
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedIcdCodesSet.has(String(r.code || ""))}
+                                    onChange={() => toggleIcdSelection(String(r.code || ""))}
+                                    className="h-4 w-4"
+                                  />
+                                  <Badge variant="secondary" className="font-mono">{r.code}</Badge>
+                                </div>
+                                <div className="flex-1 mt-2 sm:mt-0">
+                                  <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
+                                  {r.intent && (
+                                    <div className="text-xs text-gray-500 mt-1">Intent: {r.intent}</div>
+                                  )}
+                                </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${r.code} - ${r.description || ''}`)}>
+                                <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${r.code} - ${r.description || ''}${r.intent ? ' - Intent: ' + r.intent : ''}`)}>
                                   <Copy className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -1018,18 +1066,25 @@ export default function GeneratePage() {
                           <div className="space-y-3">
                             {list.map((ic, idx) => (
                               <div key={idx} className="flex items-center justify-between rounded border p-3">
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedIcdCodesSet.has(String(ic.code || ""))}
-                                    onChange={() => toggleIcdSelection(String(ic.code || ""))}
-                                    className="h-4 w-4"
-                                  />
-                                  <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
-                                  <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 w-full">
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedIcdCodesSet.has(String(ic.code || ""))}
+                                      onChange={() => toggleIcdSelection(String(ic.code || ""))}
+                                      className="h-4 w-4"
+                                    />
+                                    <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
+                                  </div>
+                                  <div className="flex-1 mt-2 sm:mt-0">
+                                    <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                    {(ic as any).intent && (
+                                      <div className="text-xs text-gray-500 mt-1">Intent: {(ic as any).intent}</div>
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}`)}>
+                                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}${(ic as any).intent ? ' - Intent: ' + (ic as any).intent : ''}`)}>
                                     <Copy className="h-4 w-4" />
                                   </Button>
                                 </div>
