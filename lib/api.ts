@@ -1395,5 +1395,50 @@ export const billingCodesApi = {
     }
 
     return response.data!;
+  },
+
+  async getSavedCodesByPatient(patientId: string, userId: string): Promise<ICDBillingCodeItem[]> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+
+    const response = await apiRequest<ICDBillingCodeItem[]>(`/billingcodes/patient/${patientId}/saved`, {
+      method: "GET",
+      params: { user_id: userId },
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to fetch saved billing codes for patient");
+    }
+
+    return response.data || [];
+  },
+
+  async analyzeNecessity(data: {
+    patient_id: string;
+    source_id: string;
+    icd_codes: any[];
+    clinical_text: string;
+  }): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+
+    const response = await apiRequest<any>("/billingcodes/analyze-necessity", {
+      method: "POST",
+      data,
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to analyze medical necessity");
+    }
+
+    return response.data;
   }
 };

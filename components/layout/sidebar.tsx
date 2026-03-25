@@ -18,7 +18,8 @@ import {
   Stethoscope,
   Upload,      
   Activity,
-  FormInput, 
+  FormInput,
+  ShieldCheck,
 } from "lucide-react"
 
 
@@ -32,6 +33,7 @@ const navigation = [
   { name: "Manage Patients", href: "/manage-patients", icon: Users },
   { name: "History", href: "/history", icon: History },
   { name: "Upload Health Report", href: "/health-report", icon: Upload }, 
+  { name: "Insurance Claims", href: "/insurance-claims", icon: ShieldCheck },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 
