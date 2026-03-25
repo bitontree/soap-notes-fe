@@ -458,7 +458,7 @@ export async function uploadHealthReportApi(
         ...authHeaders,
         ...apiKeyHeaders,
       },
-      timeout: 60000,
+      timeout: 0, // No timeout - wait indefinitely for health report parsing
       onUploadProgress: (e: any) => {
         if (e.total && onUploadProgress) {
           onUploadProgress(Math.round((e.loaded * 100) / e.total));
@@ -525,7 +525,7 @@ export async function parseHealthReportApi(
           onUploadProgress(Math.round((e.loaded * 100) / e.total));
         }
       },
-      timeout: 60000,
+      timeout: 0, // No timeout - wait indefinitely for health report parsing
     } as any
   );
 
@@ -665,7 +665,7 @@ export const soapApi = {
               onUploadProgress(percentCompleted);
             }
           },
-          timeout: 180000, // 60 seconds
+          timeout: 0, // No timeout - wait indefinitely for SOAP note generation
         } as any
       );
 
@@ -1238,6 +1238,8 @@ export interface ICDBillingCodeResponse {
   updated_at?: string;
 }
 
+import { icdBus } from './icdBus'
+
 export const billingCodesApi = {
   async getICDCodes(payload: {
     user_id: string;
@@ -1258,6 +1260,13 @@ export const billingCodesApi = {
 
     if (!response.success) {
       throw new Error(response.message || "Failed to fetch ICD billing codes");
+    }
+
+    // Broadcast the codes to any interested listeners
+    try {
+      if (response.data) icdBus.emitCodes(response.data)
+    } catch (e) {
+      console.warn('Failed to emit ICD codes event', e)
     }
 
     return response.data!;
@@ -1287,12 +1296,16 @@ export const billingCodesApi = {
     // Normalize to array of simple objects.
     const data = response.data || [];
     if (Array.isArray(data)) {
-      return data.map((it: any) => ({ code: it.code, description: it.description }));
+      const normalized = data.map((it: any) => ({ code: it.code, description: it.description }));
+      try { icdBus.emitSearch(normalized) } catch (e) { console.warn('Failed to emit ICD search event', e) }
+      return normalized
     }
 
     // If wrapped under { results: [...] }
     if (data && Array.isArray(data.results)) {
-      return data.results.map((it: any) => ({ code: it.code, description: it.description }));
+      const normalized = data.results.map((it: any) => ({ code: it.code, description: it.description }));
+      try { icdBus.emitSearch(normalized) } catch (e) { console.warn('Failed to emit ICD search event', e) }
+      return normalized
     }
 
     return [];
@@ -1318,6 +1331,12 @@ export const billingCodesApi = {
 
     if (!response.success) {
       throw new Error(response.message || "Failed to fetch drug billing codes");
+    }
+
+    try {
+      if (response.data) icdBus.emitCodes(response.data)
+    } catch (e) {
+      console.warn('Failed to emit drug ICD codes event', e)
     }
 
     return response.data!;
@@ -1356,5 +1375,25 @@ export const billingCodesApi = {
 
     // CPT/HCPCS: fallback to ICD search for now
     return await this.searchCodes(q, page, limit, context);
+  }
+  ,
+  async addSavedCodes(billingId: string, items: Array<any>): Promise<ICDBillingCodeResponse> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+
+    const response = await apiRequest<ICDBillingCodeResponse>(`/billingcodes/${encodeURIComponent(billingId)}/saved`, {
+      method: "POST",
+      data: items,
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to add saved codes");
+    }
+
+    return response.data!;
   }
 };

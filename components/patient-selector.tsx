@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { subDays, startOfToday, parseISO, isBefore, isValid } from "date-fns";
+import { subDays, startOfToday, parseISO, isBefore, isValid, differenceInYears } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -385,6 +385,29 @@ export default function PatientSelector({
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="dob">Date of Birth <span className="text-red-500">*</span></Label>
+                  <DatePicker
+                    id="dob"
+                    value={newPatient.dob || null}
+                    onChange={(value) => {
+                      const newDob = value ?? ""
+                      let calculatedAge = ""
+                      if (newDob) {
+                        const dobDate = parseISO(newDob)
+                        if (isValid(dobDate) && isBefore(dobDate, startOfToday())) {
+                          calculatedAge = String(differenceInYears(startOfToday(), dobDate))
+                        }
+                      }
+                      setNewPatient({ ...newPatient, dob: newDob, age: calculatedAge })
+                      setFieldErrors(prev => ({ ...prev, age: undefined }))
+                    }}
+                    maxDate={latestDob}
+                    minDate={earliestDob}
+                    placeholder="Select date"
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="age">Age <span className="text-red-500">*</span></Label>
                   <Input
                     id="age"
@@ -392,15 +415,10 @@ export default function PatientSelector({
                     min="0"
                     max="150"
                     value={newPatient.age}
-                    onChange={(e) =>
-                      {
-                        setNewPatient({ ...newPatient, age: e.target.value })
-                        // Clear age error when user types
-                        setFieldErrors(prev => ({ ...prev, age: undefined }))
-                      }
-                    }
-                    placeholder="30"
-                    className={fieldErrors.age ? 'border-red-500' : ''}
+                    readOnly
+                    disabled
+                    placeholder="Auto-calculated from DOB"
+                    className={`${fieldErrors.age ? 'border-red-500' : ''} bg-muted`}
                   />
                   {fieldErrors.age && (
                     <p className="text-sm text-red-500">{fieldErrors.age}</p>
@@ -427,20 +445,6 @@ export default function PatientSelector({
                       <SelectItem value="Other">Other</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="dob">Date of Birth <span className="text-red-500">*</span></Label>
-                  <DatePicker
-                    id="dob"
-                    value={newPatient.dob || null}
-                    onChange={(value) =>
-                      setNewPatient({ ...newPatient, dob: value ?? "" })
-                    }
-                    maxDate={latestDob}
-                    minDate={earliestDob}
-                    placeholder="Select date"
-                  />
                 </div>
 
                 <div className="space-y-2">

@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileText, Clock, TrendingUp, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { FileText, Clock, TrendingUp, TrendingDown, Users, Plus, Calendar, Activity, CheckCircle, User as UserIcon, Stethoscope, ClipboardList, Target, Download, Copy, Loader2, Eye, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
 import { soapApi, getDashboardStats, type DashboardStats, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api" 
+import { icdBus } from "@/lib/icdBus"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
@@ -17,6 +19,7 @@ import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
 
 export default function DashboardPage() {
   const [recentNotes, setRecentNotes] = useState<any[]>([])
+  const [isNotesLoading, setIsNotesLoading] = useState<boolean>(true)
   const { toast } = useToast()
   const { user } = useAuth()
   const [selectedNote, setSelectedNote] = useState<any | null>(null)
@@ -30,16 +33,18 @@ export default function DashboardPage() {
   const [icdOriginalSelection, setIcdOriginalSelection] = useState<string[]>([])
   // ICD search UI state
   const [icdQuery, setIcdQuery] = useState<string>("")
-  const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string }>>([])
+  const [icdSearchResults, setIcdSearchResults] = useState<Array<{ code?: string; description?: string; intent?: string }>>([])
   const [isSearchingIcd, setIsSearchingIcd] = useState<boolean>(false)
   const [icdPage, setIcdPage] = useState<number>(1)
   const [icdPageSize, setIcdPageSize] = useState<number>(10)
   const [icdHasMore, setIcdHasMore] = useState<boolean>(false)
   const [selectedCodeType, setSelectedCodeType] = useState<'icd' | 'drugs' | 'cpt' | 'hcpcs'>('icd')
+  const [icdBillingId, setIcdBillingId] = useState<string | null>(null)
 
 
   useEffect(() => {
     const fetchNotes = async () => {
+      setIsNotesLoading(true)
       try {
   const data = await soapApi.getNotes({ page: 1, limit: 3 }) // page=1, limit=3
         setRecentNotes(data.soap_notes || [])
@@ -49,6 +54,8 @@ export default function DashboardPage() {
           description: error.message || "Failed to fetch recent SOAP notes",
           variant: "destructive",
         })
+      } finally {
+        setIsNotesLoading(false)
       }
     }
     fetchNotes()
@@ -144,6 +151,7 @@ export default function DashboardPage() {
       }
       const codes = (response && response.codes) ? response.codes : []
       setIcdCodes(codes)
+      setIcdBillingId(response?.id ?? null)
       const codeKeys = (codes || []).map((c: any) => String(c.code || ""))
       setSelectedIcdCodesSet(new Set(codeKeys))
       setIcdOriginalSelection(codeKeys)
@@ -166,6 +174,11 @@ export default function DashboardPage() {
     const pageToUse = page ?? icdPage ?? 1
     const limitToUse = limit ?? icdPageSize ?? 10
 
+    // Clear previous results immediately to avoid showing stale data
+    setIcdSearchResults([])
+    setIcdHasMore(false)
+    setIcdPage(pageToUse)
+    setIcdPageSize(limitToUse)
     setIsSearchingIcd(true)
     try {
       const userId = user?.id
@@ -180,7 +193,18 @@ export default function DashboardPage() {
       else if (noteId) context.soap_note_id = noteId
 
       const rawResults = await billingCodesApi.searchByType(selectedCodeType, query, pageToUse, limitToUse, context)
-      const results = (rawResults || []).map((it: any) => ({ code: it.code || it.Code || it.code_value || '', description: it.description || it.name || it.intent || '' }))
+      const normalizedArray = Array.isArray(rawResults)
+        ? rawResults
+        : Array.isArray((rawResults as any)?.results)
+          ? (rawResults as any).results
+          : Array.isArray((rawResults as any)?.codes)
+            ? (rawResults as any).codes
+            : []
+      const results = normalizedArray.map((it: any) => ({
+        code: it.code || it.Code || it.code_value || it.icd_code || '',
+        description: it.description || it.Description || it.name || '',
+        intent: it.intent || ''
+      }))
       setIcdSearchResults(results)
       setIcdPage(pageToUse)
       setIcdPageSize(limitToUse)
@@ -208,6 +232,29 @@ export default function DashboardPage() {
     if (selectedNote) fetchIcdCodes(selectedNote)
   }, [selectedCodeType])
 
+  // Sync billing codes from global ICD bus while modal is open
+  useEffect(() => {
+    const unsub = icdBus.subscribe((ev) => {
+      if (!isViewModalOpen) return
+      try {
+        if (ev.kind === "codes") {
+          const resp = ev.payload as any
+          setIcdCodes(resp.codes || [])
+          setIcdBillingId(resp.id ?? null)
+          const codeKeys = (resp.codes || []).map((c: any) => String(c.code || ""))
+          setSelectedIcdCodesSet(new Set(codeKeys))
+          setIcdOriginalSelection(codeKeys)
+          setIsLoadingIcdCodes(false)
+        }
+        // Ignore global search events to avoid overwriting local search results
+      } catch (e) {
+        console.warn("Error handling icdBus event", e)
+      }
+    })
+
+    return () => { unsub() }
+  }, [isViewModalOpen, selectedNote])
+
   const toggleIcdSelection = (code?: string) => {
     if (!code) return
     setSelectedIcdCodesSet((prev) => {
@@ -219,9 +266,60 @@ export default function DashboardPage() {
   }
 
   const handleSaveIcdSelection = () => {
-    const selected = Array.from(selectedIcdCodesSet)
-    console.log('Saving ICD selection for note', selectedNote?.id, selected)
-    setIsViewModalOpen(false)
+    (async () => {
+      const selected = Array.from(selectedIcdCodesSet)
+      if (!icdBillingId) {
+        toast({ title: 'Error', description: 'Missing billing document id. Cannot save codes.', variant: 'destructive' })
+        return
+      }
+
+      const existingByCode = new Map(
+        (icdCodes || []).map((c: any) => [String(c.code || ""), c])
+      )
+      const searchByCode = new Map(
+        (icdSearchResults || []).map((r: any) => [String(r.code || ""), r])
+      )
+
+      const noteId = selectedNote?.id || ''
+      const healthReportId = (selectedNote as any)?.health_report_id || (selectedNote?.soap_data as any)?.health_report_id
+
+      const items = selected.map((code) => {
+        const existing = existingByCode.get(String(code))
+        if (existing) {
+          return {
+            soap_note_id: (existing as any).soap_note_id || noteId,
+            health_report_id: (existing as any).health_report_id || healthReportId || undefined,
+            code_type: (existing as any).code_type || selectedCodeType,
+            code: existing.code,
+            description: (existing as any).description || ''
+          }
+        }
+
+        const searched = searchByCode.get(String(code))
+        return {
+          soap_note_id: noteId,
+          health_report_id: healthReportId || undefined,
+          code_type: selectedCodeType,
+          code: String(code),
+          description: (searched as any)?.description || ''
+        }
+      })
+
+      try {
+        setIsLoadingIcdCodes(true)
+        const saved = await billingCodesApi.addSavedCodes(icdBillingId, items)
+        toast({ title: 'Saved', description: 'Billing codes saved successfully' })
+        const nextCodes = (saved && Array.isArray(saved.codes) && saved.codes.length > 0) ? saved.codes : items
+        setIcdCodes(nextCodes as any)
+        setIcdOriginalSelection(nextCodes.map((it: any) => String(it.code)))
+        setIsViewModalOpen(false)
+      } catch (error: any) {
+        console.error('Failed to save ICD codes:', error)
+        toast({ title: 'Error', description: error?.message || 'Failed to save billing codes', variant: 'destructive' })
+      } finally {
+        setIsLoadingIcdCodes(false)
+      }
+    })()
   }
 
   const handleCancelIcdSelection = () => {
@@ -241,11 +339,24 @@ export default function DashboardPage() {
               <FileText className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.totalNotes}</div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.totalNotesPct != null ? `${stats.changes.totalNotesPct > 0 ? '+' : ''}${stats.changes.totalNotesPct}% from last month` : 'Updated now')}
-              </div>
+              {isStatsLoading ? (
+                <div className="space-y-3">
+                  <div className="h-7 w-12 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                  <div className="h-3 w-32 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">{stats.totalNotes}</div>
+                  <div className="flex items-center text-xs text-gray-600 mt-1">
+                    {stats.changes?.totalNotesPct != null && stats.changes.totalNotesPct < 0 ? (
+                      <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                    ) : (
+                      <TrendingUp className={`h-3 w-3 mr-1 ${stats.changes?.totalNotesPct != null && stats.changes.totalNotesPct > 0 ? 'text-green-600' : ''}`} />
+                    )}
+                    {stats.changes?.totalNotesPct != null ? `${stats.changes.totalNotesPct > 0 ? '+' : ''}${stats.changes.totalNotesPct}% from last month` : 'Updated now'}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -255,11 +366,24 @@ export default function DashboardPage() {
               <Calendar className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.thisWeek}</div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.thisWeekPct != null ? `${stats.changes.thisWeekPct > 0 ? '+' : ''}${stats.changes.thisWeekPct}% from last week` : 'Last 7 days')}
-              </div>
+              {isStatsLoading ? (
+                <div className="space-y-3">
+                  <div className="h-7 w-10 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                  <div className="h-3 w-20 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">{stats.thisWeek}</div>
+                  <div className="flex items-center text-xs text-gray-600 mt-1">
+                    {stats.changes?.thisWeekPct != null && stats.changes.thisWeekPct < 0 ? (
+                      <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                    ) : (
+                      <TrendingUp className={`h-3 w-3 mr-1 ${stats.changes?.thisWeekPct != null && stats.changes.thisWeekPct > 0 ? 'text-green-600' : ''}`} />
+                    )}
+                    {stats.changes?.thisWeekPct != null ? `${stats.changes.thisWeekPct > 0 ? '+' : ''}${stats.changes.thisWeekPct}% from last week` : 'Last 7 days'}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -269,13 +393,26 @@ export default function DashboardPage() {
               <Clock className="h-4 w-4 text-orange-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {isStatsLoading ? '—' : (stats.avgProcessingTimeMs == null ? '—' : `${(stats.avgProcessingTimeMs / 60000).toFixed(1)}m`)}
-              </div>
-              <div className="flex items-center text-xs text-gray-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.avgProcessingTimePct != null ? `${stats.changes.avgProcessingTimePct > 0 ? '+' : ''}${stats.changes.avgProcessingTimePct}% vs last month` : 'Based on recent records')}
-              </div>
+              {isStatsLoading ? (
+                <div className="space-y-3">
+                  <div className="h-7 w-12 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                  <div className="h-3 w-32 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {stats.avgProcessingTimeMs == null ? '—' : `${(stats.avgProcessingTimeMs / 60000).toFixed(1)}m`}
+                  </div>
+                  <div className="flex items-center text-xs text-gray-600 mt-1">
+                    {stats.changes?.avgProcessingTimePct != null && stats.changes.avgProcessingTimePct < 0 ? (
+                      <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                    ) : (
+                      <TrendingUp className={`h-3 w-3 mr-1 ${stats.changes?.avgProcessingTimePct != null && stats.changes.avgProcessingTimePct > 0 ? 'text-green-600' : ''}`} />
+                    )}
+                    {stats.changes?.avgProcessingTimePct != null ? `${stats.changes.avgProcessingTimePct > 0 ? '+' : ''}${stats.changes.avgProcessingTimePct}% vs last month` : 'Based on recent records'}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -285,11 +422,24 @@ export default function DashboardPage() {
               <Users className="h-4 w-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{isStatsLoading ? '—' : stats.activePatients}</div>
-                <div className="flex items-center text-xs text-gray-600 mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                {isStatsLoading ? '—' : (stats.changes?.activePatientsPct != null ? `${stats.changes.activePatientsPct > 0 ? '+' : ''}${stats.changes.activePatientsPct}% from last month` : 'Patients in system')}
+              {isStatsLoading ? (
+                <div className="space-y-3">
+                  <div className="h-7 w-10 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                  <div className="h-3 w-28 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
                 </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">{stats.activePatients}</div>
+                  <div className="flex items-center text-xs text-gray-600 mt-1">
+                    {stats.changes?.activePatientsPct != null && stats.changes.activePatientsPct < 0 ? (
+                      <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                    ) : (
+                      <TrendingUp className={`h-3 w-3 mr-1 ${stats.changes?.activePatientsPct != null && stats.changes.activePatientsPct > 0 ? 'text-green-600' : ''}`} />
+                    )}
+                    {stats.changes?.activePatientsPct != null ? `${stats.changes.activePatientsPct > 0 ? '+' : ''}${stats.changes.activePatientsPct}% from last month` : 'Patients in system'}
+                  </div>
+                </>
+              )}
               </CardContent>
             </Card>
         </div>
@@ -337,7 +487,18 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentNotes.length > 0 ? (
+                {isNotesLoading ? (
+                  // Minimalistic skeleton loaders
+                  [...Array(3)].map((_, i) => (
+                    <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-gray-100">
+                      <div className="flex-1 space-y-2.5">
+                        <div className="h-4 w-28 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                        <div className="h-3 w-40 bg-gradient-to-r from-gray-50 via-gray-100 to-gray-50 rounded animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
+                      </div>
+                      <div className="h-8 w-16 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded animate-pulse" />
+                    </div>
+                  ))
+                ) : recentNotes.length > 0 ? (
                   recentNotes.map((note) => (
                     <div key={note.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex-1">
@@ -598,18 +759,25 @@ export default function DashboardPage() {
                             <div className="space-y-2 mt-2">
                               {icdSearchResults.map((r, idx) => (
                                 <div key={idx} className="flex items-center justify-between rounded border p-3">
-                                  <div className="flex items-center gap-3">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedIcdCodesSet.has(String(r.code || ""))}
-                                      onChange={() => toggleIcdSelection(String(r.code || ""))}
-                                      className="h-4 w-4"
-                                    />
-                                    <Badge variant="secondary" className="font-mono">{r.code}</Badge>
-                                    <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 w-full">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedIcdCodesSet.has(String(r.code || ""))}
+                                        onChange={() => toggleIcdSelection(String(r.code || ""))}
+                                        className="h-4 w-4"
+                                      />
+                                      <Badge variant="secondary" className="font-mono">{r.code}</Badge>
+                                    </div>
+                                    <div className="flex-1 mt-2 sm:mt-0">
+                                      <div className="text-sm text-gray-800">{r.description || 'No description'}</div>
+                                      {selectedCodeType === 'drugs' && r.intent && (
+                                        <div className="text-xs text-gray-500 mt-1">Intent: {r.intent}</div>
+                                      )}
+                                    </div>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${r.code} - ${r.description || ''}`)}>
+                                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${r.code} - ${r.description || ''}${r.intent ? ' - Intent: ' + r.intent : ''}`)}>
                                       <Copy className="h-4 w-4" />
                                     </Button>
                                   </div>
@@ -645,18 +813,25 @@ export default function DashboardPage() {
                               <div className="space-y-3">
                                 {list.map((ic, idx) => (
                                   <div key={idx} className="flex items-center justify-between rounded border p-3">
-                                    <div className="flex items-center gap-3">
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedIcdCodesSet.has(String(ic.code || ""))}
-                                        onChange={() => toggleIcdSelection(String(ic.code || ""))}
-                                        className="h-4 w-4"
-                                      />
-                                      <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
-                                      <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 w-full">
+                                      <div className="flex items-center gap-3">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedIcdCodesSet.has(String(ic.code || ""))}
+                                          onChange={() => toggleIcdSelection(String(ic.code || ""))}
+                                          className="h-4 w-4"
+                                        />
+                                        <Badge variant="secondary" className="font-mono">{ic.code}</Badge>
+                                      </div>
+                                      <div className="flex-1 mt-2 sm:mt-0">
+                                        <div className="text-sm text-gray-800">{ic.description || 'No description'}</div>
+                                        {selectedCodeType === 'drugs' && (ic as any).intent && (
+                                          <div className="text-xs text-gray-500 mt-1">Intent: {(ic as any).intent}</div>
+                                        )}
+                                      </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}`)}>
+                                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${ic.code} - ${ic.description || ''}${(ic as any).intent ? ' - Intent: ' + (ic as any).intent : ''}`)}>
                                         <Copy className="h-4 w-4" />
                                       </Button>
                                     </div>

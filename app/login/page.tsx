@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/contexts/auth-context"
-import { Stethoscope, Loader2, Eye, EyeOff } from "lucide-react"
+import { Stethoscope, Loader2, Eye, EyeOff, Shield } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useEmailValidation } from "@/hooks/use-email-validation"
 
@@ -52,89 +52,95 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-blue-100 rounded-full">
-              <Stethoscope className="h-8 w-8 text-blue-600" />
+    <div className="min-h-screen flex items-center justify-center p-8 bg-slate-50">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-900 rounded-xl">
+              <Stethoscope className="h-6 w-6 text-white" />
             </div>
+            <span className="text-xl font-semibold text-blue-900">SOAP Notes</span>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">Welcome</CardTitle>
-          <CardDescription>Sign in to your SOAP Medical Notes account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
-              <Input
-                id="email"
-                name="login-email"
-                type="email"
-                placeholder="doctor@hospital.com"
-                value={emailValidation.value}
-                onChange={emailValidation.handleChange}
-                autoComplete="email"
-                className={emailValidation.error ? "border-red-500" : ""}
-                required
-              />
-              {emailValidation.error && (
-                <p className="text-sm text-red-500">{emailValidation.error}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
-              <div className="relative">
+        </div>
+
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="text-center pb-4">
+            <CardTitle className="text-2xl font-semibold text-slate-800">Welcome</CardTitle>
+            <CardDescription className="text-slate-500">Sign in to your account</CardDescription>
+          </CardHeader>
+          <CardContent className="px-8 pb-8">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium text-slate-600">Email</Label>
                 <Input
-                  id="password"
-                  name="login-password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  className="pr-10"
+                  id="email"
+                  name="login-email"
+                  type="email"
+                  placeholder="doctor@hospital.com"
+                  value={emailValidation.value}
+                  onChange={emailValidation.handleChange}
+                  autoComplete="email"
+                  className={`h-11 rounded-lg bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-all ${emailValidation.error ? "border-red-400 focus:border-red-400 focus:ring-red-400" : ""}`}
                   required
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? (
-                    <Eye className="h-4 w-4" />
-                  ) : (
-                    <EyeOff className="h-4 w-4" />
-                  )}
-                </button>
+                {emailValidation.error && (
+                  <p className="text-xs text-red-500">{emailValidation.error}</p>
+                )}
               </div>
-            </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                "Sign In"
-              )}
-            </Button>
-          </form>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium text-slate-600">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="login-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 pr-11 transition-all"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showPassword ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <Button type="submit" className="w-full h-11 bg-blue-900 hover:bg-blue-900 text-white font-medium rounded-lg transition-colors" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
+              </Button>
+            </form>
 
-          <div className="mt-6 text-center space-y-2">
-            <p className="text-sm text-gray-600">
-              {"Don't have an account? "}
-              <Link href="/signup" className="text-blue-600 hover:underline">
-                Sign up
-              </Link>
-            </p>
-            <p className="text-sm text-gray-600">
-              <Link href="/forgot-password" className="text-blue-600 hover:underline">
+            <div className="mt-6 pt-6 border-t border-slate-100 text-center space-y-3">
+              <p className="text-sm text-slate-600">
+                {"Don't have an account? "}
+                <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium">
+                  Sign up
+                </Link>
+              </p>
+              <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 block font-medium">
                 Forgot your password?
               </Link>
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+            </div>
+          </CardContent>
+        </Card>
+
+        <p className="text-center text-xs text-black-500 mt-6 flex items-center justify-center gap-1.5">
+          <Shield className="h-3.5 w-3.5 text-emerald-600" />
+          Protected by HIPAA-compliant security
+        </p>
+      </div>
     </div>
   )
 }
