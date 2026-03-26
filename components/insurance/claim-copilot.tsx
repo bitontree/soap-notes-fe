@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,7 @@ import {
   Target
 } from "lucide-react"
 import { billingCodesApi } from "@/lib/api"
+import InsuranceClaimForm from "./insurance-claim-form"
 
 interface ClaimCopilotProps {
   onBack: () => void
@@ -33,9 +34,12 @@ export default function ClaimCopilot({ onBack, selectedPatient, selectedSourceId
   const [isComplete, setIsComplete] = useState(false)
   const [probability, setProbability] = useState(0)
   const [analysisResult, setAnalysisResult] = useState<any>(null)
+  const [showForm, setShowForm] = useState(false)
+  const hasInitialized = useRef(false)
 
   // Real analysis logic with animation
   const startAnalysis = async () => {
+    if (isAnalyzing) return
     setIsAnalyzing(true)
     setIsComplete(false)
     setProbability(0)
@@ -75,8 +79,21 @@ export default function ClaimCopilot({ onBack, selectedPatient, selectedSourceId
   }
 
   useEffect(() => {
+    if (hasInitialized.current) return
+    hasInitialized.current = true
     startAnalysis()
   }, [])
+
+  if (showForm) {
+    return (
+      <InsuranceClaimForm 
+        onBack={() => setShowForm(false)} 
+        patientData={selectedPatient} 
+        selectedCodes={selectedCodes}
+        analysisResult={analysisResult}
+      />
+    )
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -205,6 +222,26 @@ export default function ClaimCopilot({ onBack, selectedPatient, selectedSourceId
                             </ul>
                         </div>
                     </div>
+
+                    {/* Clinician Action Tips (NEW) */}
+                    {analysisResult?.clinician_tips?.length > 0 && (
+                        <div className="mt-6 p-6 rounded-2xl bg-indigo-50 border border-indigo-100 animate-in zoom-in-50 duration-500">
+                            <div className="flex items-center gap-2 mb-4 text-indigo-900">
+                                <Activity className="h-4 w-4" />
+                                <h4 className="text-sm font-black uppercase tracking-tight">Pro-Tips for 100% Approval</h4>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {analysisResult.clinician_tips.map((tip: string, i: number) => (
+                                    <div key={i} className="flex items-start gap-3 bg-white/60 p-3 rounded-xl border border-indigo-50 shadow-sm">
+                                        <div className="h-5 w-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0">
+                                            {i + 1}
+                                        </div>
+                                        <p className="text-[11px] font-bold text-slate-700 leading-normal">{tip}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>
@@ -256,7 +293,10 @@ export default function ClaimCopilot({ onBack, selectedPatient, selectedSourceId
                 </CardContent>
             </Card>
 
-            <div className="p-6 rounded-3xl bg-blue-600 shadow-xl shadow-blue-200 text-white group cursor-pointer hover:bg-blue-700 transition-all">
+            <div 
+                className={`p-6 rounded-3xl transition-all shadow-xl ${isComplete ? 'bg-blue-600 shadow-blue-200 text-white cursor-pointer hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'}`}
+                onClick={() => isComplete && setShowForm(true)}
+            >
                 <div className="flex items-center justify-between mb-4">
                     <div className="p-2 bg-white/20 rounded-lg">
                         <Target className="h-5 w-5" />
@@ -265,7 +305,7 @@ export default function ClaimCopilot({ onBack, selectedPatient, selectedSourceId
                 </div>
                 <h3 className="text-lg font-black leading-tight mb-2">Submit Claim to Insurance</h3>
                 <p className="text-blue-100 text-xs font-medium leading-relaxed">
-                    AI analysis confirmed. You are ready to transmit this claim through the EDI portal.
+                    AI analysis confirmed. Click here to fill the Insurance form!
                 </p>
             </div>
         </div>
