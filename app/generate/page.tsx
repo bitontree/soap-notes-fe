@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast"
 import { soapApi, billingCodesApi, type ICDBillingCodeItem } from "@/lib/api"
 import { icdBus } from "@/lib/icdBus"
 import { exportSOAPNoteToPDF } from "@/lib/pdf-export"
-import PatientSelector from "@/components/patient-selector" 
+import PatientSelector from "@/components/patient-selector"
 import { useAuth } from "@/contexts/auth-context"
 import { ProtectedRoute } from "@/components/protected-route"
 
@@ -110,7 +110,7 @@ export default function GeneratePage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [soapNote, setSOAPNote] = useState<SOAPNoteExt | null>(null)
-  
+
   // Audio recording states
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
@@ -118,7 +118,7 @@ export default function GeneratePage() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
-  
+
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -132,7 +132,7 @@ export default function GeneratePage() {
   const [selectedIcdCodesSet, setSelectedIcdCodesSet] = useState<Set<string>>(new Set())
   const [icdOriginalSelection, setIcdOriginalSelection] = useState<string[]>([])
   const [icdBillingId, setIcdBillingId] = useState<string | null>(null)
-  
+
   // Refs for audio recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordingIntervalRef = useRef<number | null>(null)
@@ -192,7 +192,7 @@ export default function GeneratePage() {
 
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("payload", JSON.stringify({ 
+    formData.append("payload", JSON.stringify({
       user_id: user.id,
       patient_id: selectedPatient.id,
       patient_name: selectedPatient.firstname + " " + selectedPatient.lastname,
@@ -222,7 +222,7 @@ export default function GeneratePage() {
         })
         setIcdBillingId(data.billing_codes?.id ?? null)
         // initialize selection to returned codes
-        const returned = (data.billing_codes?.codes || []).map((c:any) => String(c.code || ""))
+        const returned = (data.billing_codes?.codes || []).map((c: any) => String(c.code || ""))
         setSelectedIcdCodesSet(new Set(returned))
         setIcdOriginalSelection(returned)
       } else {
@@ -235,7 +235,7 @@ export default function GeneratePage() {
 
       setProgress(100)
       setIsProcessing(false)
-      
+
       // Clean up local files after successful processing
       cleanupLocalFiles()
     } catch (error: any) {
@@ -260,7 +260,7 @@ export default function GeneratePage() {
   // Keep selection state in sync if soapNote.icdCodes changes elsewhere
   useEffect(() => {
     if (!soapNote) return
-    const codes = (soapNote.icdCodes || []).map((c:any) => String(c.code || ""))
+    const codes = (soapNote.icdCodes || []).map((c: any) => String(c.code || ""))
     setSelectedIcdCodesSet(new Set(codes))
     setIcdOriginalSelection(codes)
   }, [soapNote?.icdCodes])
@@ -308,8 +308,8 @@ export default function GeneratePage() {
       }
 
       const items = (soapNote.icdCodes || [])
-        .filter((c:any) => selected.includes(String(c.code || "")))
-        .map((c:any) => ({
+        .filter((c: any) => selected.includes(String(c.code || "")))
+        .map((c: any) => ({
           soap_note_id: c.soap_note_id || '',
           health_report_id: c.health_report_id || undefined,
           code_type: c.code_type || 'icd',
@@ -321,7 +321,7 @@ export default function GeneratePage() {
         setIsSearchingIcd(true)
         await billingCodesApi.addSavedCodes(icdBillingId, items)
         setSOAPNote({ ...soapNote, icdCodes: items })
-        setIcdOriginalSelection(items.map((it:any) => String(it.code)))
+        setIcdOriginalSelection(items.map((it: any) => String(it.code)))
         toast({ title: 'Saved', description: 'Billing codes saved successfully' })
       } catch (error: any) {
         console.error('Failed to save ICD codes:', error)
@@ -392,68 +392,68 @@ export default function GeneratePage() {
   // Audio recording functions
   const startRecording = async () => {
     try {
-             const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-       
-       // Try to use more compatible audio format
-       let mimeType = 'audio/webm;codecs=opus'
-       if (MediaRecorder.isTypeSupported('audio/mp4')) {
-         mimeType = 'audio/mp4'
-       } else if (MediaRecorder.isTypeSupported('audio/wav')) {
-         mimeType = 'audio/wav'
-       }
-       
-       const mediaRecorder = new MediaRecorder(stream, {
-         mimeType: mimeType
-       })
-      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+      // Try to use more compatible audio format
+      let mimeType = 'audio/webm;codecs=opus'
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4'
+      } else if (MediaRecorder.isTypeSupported('audio/wav')) {
+        mimeType = 'audio/wav'
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mimeType
+      })
+
       mediaRecorderRef.current = mediaRecorder
       const chunks: Blob[] = []
-      
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunks.push(event.data)
         }
       }
-      
-             mediaRecorder.onstop = () => {
-         const blob = new Blob(chunks, { type: mimeType })
-         setAudioBlob(blob)
-         const url = URL.createObjectURL(blob)
-         setAudioUrl(url)
-         
-         // Convert blob to File object for processing
-         const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('wav') ? 'wav' : 'webm'
-         const audioFile = new File([blob], `recording_${Date.now()}.${extension}`, { type: mimeType })
-         
-         console.log('🎙️ Recording completed:', {
-           mimeType,
-           extension,
-           fileName: audioFile.name,
-           fileSize: audioFile.size,
-           fileType: audioFile.type
-         })
-         
-         setFile(audioFile)
-        
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: mimeType })
+        setAudioBlob(blob)
+        const url = URL.createObjectURL(blob)
+        setAudioUrl(url)
+
+        // Convert blob to File object for processing
+        const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('wav') ? 'wav' : 'webm'
+        const audioFile = new File([blob], `recording_${Date.now()}.${extension}`, { type: mimeType })
+
+        console.log('🎙️ Recording completed:', {
+          mimeType,
+          extension,
+          fileName: audioFile.name,
+          fileSize: audioFile.size,
+          fileType: audioFile.type
+        })
+
+        setFile(audioFile)
+
         // Stop all tracks
         stream.getTracks().forEach(track => track.stop())
-        
+
         toast({
           title: "Recording completed",
           description: "Audio recording saved and ready for processing",
         })
       }
-      
+
       mediaRecorder.start()
       setIsRecording(true)
       setIsPaused(false)
       setRecordingTime(0)
-      
+
       // Start timer (use browser window.setInterval to get a numeric id)
       recordingIntervalRef.current = window.setInterval(() => {
         setRecordingTime(prev => prev + 1)
       }, 1000)
-      
+
     } catch (error) {
       toast({
         title: "Recording failed",
@@ -462,64 +462,64 @@ export default function GeneratePage() {
       })
     }
   }
-  
+
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
       setIsRecording(false)
       setIsPaused(false)
-      
+
       if (recordingIntervalRef.current) {
         window.clearInterval(recordingIntervalRef.current as number)
         recordingIntervalRef.current = null
       }
     }
   }
-  
+
   const pauseRecording = () => {
     if (mediaRecorderRef.current && isRecording && !isPaused) {
       mediaRecorderRef.current.pause()
       setIsPaused(true)
-      
+
       if (recordingIntervalRef.current) {
         window.clearInterval(recordingIntervalRef.current as number)
         recordingIntervalRef.current = null
       }
     }
   }
-  
+
   const resumeRecording = () => {
     if (mediaRecorderRef.current && isRecording && isPaused) {
       mediaRecorderRef.current.resume()
       setIsPaused(false)
-      
+
       // Resume timer (use browser window.setInterval)
       recordingIntervalRef.current = window.setInterval(() => {
         setRecordingTime(prev => prev + 1)
       }, 1000)
     }
   }
-  
+
   const playRecording = () => {
     if (audioRef.current && audioUrl) {
       audioRef.current.play()
       setIsPlaying(true)
     }
   }
-  
+
   const pausePlayback = () => {
     if (audioRef.current) {
       audioRef.current.pause()
       setIsPlaying(false)
     }
   }
-  
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
-  
+
   const clearRecording = () => {
     setAudioBlob(null)
     setAudioUrl(null)
@@ -528,12 +528,12 @@ export default function GeneratePage() {
     setIsRecording(false)
     setIsPaused(false)
     setIsPlaying(false)
-    
+
     if (recordingIntervalRef.current) {
       window.clearInterval(recordingIntervalRef.current as number)
       recordingIntervalRef.current = null
     }
-    
+
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
@@ -596,7 +596,7 @@ export default function GeneratePage() {
       setIsSearchingIcd(false)
     }
   }
-  
+
   // Cleanup function to delete local files after processing
   const cleanupLocalFiles = () => {
     if (audioUrl) {
@@ -606,16 +606,16 @@ export default function GeneratePage() {
     setAudioBlob(null)
   }
 
-    return (
-      <div>
-        <Header
-          title="Generate SOAP Note"
-          description="Upload audio recordings to generate structured medical documentation"
-        />
+  return (
+    <div>
+      <Header
+        title="Generate SOAP Note"
+        description="Upload audio recordings to generate structured medical documentation"
+      />
 
-        <div className="p-6 max-w-6xl mx-auto space-y-6">
-          {!soapNote ? (
-            <div className="space-y-6">
+      <div className="p-6 max-w-6xl mx-auto space-y-6">
+        {!soapNote ? (
+          <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Audio Input Section */}
               <Card>
@@ -631,23 +631,22 @@ export default function GeneratePage() {
                       <TabsTrigger value="upload">Upload File</TabsTrigger>
                       <TabsTrigger value="record">Record Audio</TabsTrigger>
                     </TabsList>
-                    
+
                     <TabsContent value="upload" className="space-y-4">
                       <div
                         {...getRootProps()}
-                        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                          isDragActive ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-gray-400"
-                        }`}
+                        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragActive ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-gray-400"
+                          }`}
                       >
                         <input {...getInputProps()} />
-                                                 {file ? (
-                           <div className="space-y-2">
-                             <FileAudio className="h-12 w-12 text-blue-600 mx-auto" />
-                             <p className="font-medium text-gray-900">{file.name}</p>
-                             <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                             <Badge variant="secondary">Ready to process</Badge>
-                           </div>
-                         ) : (
+                        {file ? (
+                          <div className="space-y-2">
+                            <FileAudio className="h-12 w-12 text-blue-600 mx-auto" />
+                            <p className="font-medium text-gray-900">{file.name}</p>
+                            <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                            <Badge variant="secondary">Ready to process</Badge>
+                          </div>
+                        ) : (
                           <div className="space-y-2">
                             <Upload className="h-12 w-12 text-gray-400 mx-auto" />
                             <p className="text-lg font-medium text-gray-900">
@@ -658,7 +657,7 @@ export default function GeneratePage() {
                         )}
                       </div>
                     </TabsContent>
-                    
+
                     <TabsContent value="record" className="space-y-4">
                       {!audioBlob ? (
                         <div className="space-y-4">
@@ -705,7 +704,7 @@ export default function GeneratePage() {
                               </>
                             )}
                           </div>
-                          
+
                           {/* Recording Timer */}
                           {isRecording && (
                             <div className="text-center">
@@ -717,7 +716,7 @@ export default function GeneratePage() {
                               </p>
                             </div>
                           )}
-                          
+
                           {/* Instructions */}
                           <div className="text-center text-sm text-gray-600">
                             <p>Click "Start Recording" to begin capturing audio</p>
@@ -735,7 +734,7 @@ export default function GeneratePage() {
                               Duration: {formatTime(recordingTime)}
                             </p>
                           </div>
-                          
+
                           {/* Playback Controls */}
                           <div className="flex justify-center space-x-2">
                             {!isPlaying ? (
@@ -754,7 +753,7 @@ export default function GeneratePage() {
                               Re-record
                             </Button>
                           </div>
-                          
+
                           {/* Hidden audio element for playback */}
                           <audio
                             ref={audioRef}
@@ -941,8 +940,8 @@ export default function GeneratePage() {
                     <pre className="whitespace-pre-wrap text-gray-700">
                       {soapNote.diarized_transcript
                         ? soapNote.diarized_transcript
-                            .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
-                            .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
+                          .replace(/\[([^\]]+)\]/g, "$1:")  // Replace [Speaker] with Speaker:
+                          .replace(/(\n)?([A-Za-z]+:)/g, "\n$2") // Ensure a newline before speaker label
                         : "No diarized transcript available."}
                     </pre>
                   </CardContent>
@@ -1059,9 +1058,9 @@ export default function GeneratePage() {
                     {/* Existing list of ICD codes for the generated note */}
                     {soapNote.icdCodes && soapNote.icdCodes.length > 0 ? (
                       (() => {
-                        const diagnoses = soapNote.icdCodes.filter((c:any) => String(c.code_type || '').toLowerCase().includes('diagnos'))
-                        const symptoms = soapNote.icdCodes.filter((c:any) => String(c.code_type || '').toLowerCase().includes('symptom'))
-                        const others = soapNote.icdCodes.filter((c:any) => !diagnoses.includes(c) && !symptoms.includes(c))
+                        const diagnoses = soapNote.icdCodes.filter((c: any) => String(c.code_type || '').toLowerCase().includes('diagnos'))
+                        const symptoms = soapNote.icdCodes.filter((c: any) => String(c.code_type || '').toLowerCase().includes('symptom'))
+                        const others = soapNote.icdCodes.filter((c: any) => !diagnoses.includes(c) && !symptoms.includes(c))
                         const renderList = (list: any[], label: string) => (
                           <div className="space-y-3">
                             {list.map((ic, idx) => (

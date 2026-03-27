@@ -1420,6 +1420,7 @@ export const billingCodesApi = {
   async analyzeNecessity(data: {
     patient_id: string;
     source_id: string;
+    appointment_id?: string;
     icd_codes: any[];
     clinical_text: string;
   }): Promise<any> {
@@ -1437,6 +1438,96 @@ export const billingCodesApi = {
 
     if (!response.success) {
       throw new Error(response.message || "Failed to analyze medical necessity");
+    }
+
+    return response.data;
+  },
+
+  async auditPolicy(data: {
+    patient_id: string;
+    insurance_provider: string;
+    icd_codes: any[];
+  }): Promise<any> {
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...getApiKeyAuthHeaders(),
+    };
+
+    const response = await apiRequest<any>("/billingcodes/audit-policy", {
+      method: "POST",
+      data,
+      headers,
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to audit insurance policy");
+    }
+
+    return response.data;
+  }
+};
+
+export const billsApi = {
+  createBill: async (billData: {
+    user_id: string;
+    patient_id: string;
+    billing_codes_id: string;
+    appointment_id?: string;
+    soap_note_id?: string;
+    status?: string;
+    form_details: {
+      insurance_details: {
+        payer_name: string;
+        plan_type: string;
+        member_id: string;
+        group_number?: string;
+      };
+      claim_lines: {
+        code: string;
+        description: string;
+        units: number;
+        charge_amount: number;
+      }[];
+      total_amount: number;
+      audit_report: {
+        policy_score: number;
+        is_eligible: boolean;
+        explanation: string;
+        frequency_audit: string;
+        financial_audit: string;
+        policy_violation?: string;
+      };
+      additional_info?: any;
+    };
+  }) => {
+    const response = await apiRequest<any>("/bills/", {
+      method: "POST",
+      data: billData,
+      headers: {
+        ...getAuthHeaders(),
+        ...getApiKeyAuthHeaders(),
+      }
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to create bill");
+    }
+
+    return response.data;
+  },
+
+  getPatientBills: async (patientId: string) => {
+    const response = await apiRequest<any[]>(`/bills/patient/${patientId}`, {
+      method: "GET",
+      headers: {
+        ...getAuthHeaders(),
+        ...getApiKeyAuthHeaders(),
+      }
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to fetch patient bills");
     }
 
     return response.data;
