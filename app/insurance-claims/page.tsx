@@ -20,6 +20,7 @@ import {
   FileText,
   Activity,
   ShieldCheck,
+  ShieldAlert,
   Loader2,
   ExternalLink,
   ChevronRight,
@@ -176,6 +177,31 @@ export default function InsuranceClaimsPage() {
     return "Filtered Codes"
   }, [selectedSourceId, soapNotes, healthReports])
 
+  // Check if the current selected source already has a claim
+  const isSelectedSourceClaimed = useMemo(() => {
+    if (!selectedSourceId) return false
+    
+    // Check SOAP notes
+    const note = soapNotes.find(n => n.id === selectedSourceId)
+    if (note) {
+      return pastBills.some(bill => 
+        isMatch(bill.soap_note_id, note.id, bill.form_details?.additional_info?.date_of_service || bill.created_at, note.created_at) ||
+        isMatch(bill.form_details?.additional_info?.soap_note_id, note.id)
+      )
+    }
+    
+    // Check health reports
+    const report = healthReports.find(r => r.report_id === selectedSourceId)
+    if (report) {
+      return pastBills.some(bill => 
+        isMatch(bill.form_details?.additional_info?.health_report_id, report.report_id, bill.form_details?.additional_info?.date_of_service || bill.created_at, report.test_date || report.created_at) ||
+        isMatch(bill.form_details?.additional_info?.report_id, report.report_id)
+      )
+    }
+    
+    return false
+  }, [selectedSourceId, soapNotes, healthReports, pastBills])
+
   // Calculate current step for the stepper
   const currentStep = useMemo(() => {
     if (!selectedPatient) return 1
@@ -294,12 +320,12 @@ export default function InsuranceClaimsPage() {
                                           className={`
                                             transition-all duration-300 border-b last:border-0
                                             ${hasClaim 
-                                              ? "bg-slate-50/40 cursor-not-allowed opacity-75" 
+                                              ? (selectedSourceId === note.id ? "bg-blue-50/60 ring-1 ring-inset ring-blue-100/50 cursor-pointer" : "bg-slate-50/40 hover:bg-slate-50/60 cursor-pointer") 
                                               : (selectedSourceId === note.id ? "bg-blue-50/60 ring-1 ring-inset ring-blue-100/50 cursor-pointer" : "hover:bg-slate-50/80 cursor-pointer")
                                             }
                                           `}
                                           onClick={() => {
-                                            if (!hasClaim) setSelectedSourceId(note.id)
+                                            setSelectedSourceId(note.id)
                                           }}
                                         >
                                           <TableCell className="px-4 py-3 font-mono text-[10px] text-slate-600">
@@ -364,12 +390,12 @@ export default function InsuranceClaimsPage() {
                                           className={`
                                             transition-all duration-300 border-b last:border-0
                                             ${hasClaim 
-                                              ? "bg-slate-50/40 cursor-not-allowed opacity-75" 
+                                              ? (selectedSourceId === report.report_id ? "bg-blue-50/60 ring-1 ring-inset ring-blue-100/50 cursor-pointer" : "bg-slate-50/40 hover:bg-slate-50/60 cursor-pointer") 
                                               : (selectedSourceId === report.report_id ? "bg-blue-50/60 ring-1 ring-inset ring-blue-100/50 cursor-pointer" : "hover:bg-slate-50/80 cursor-pointer")
                                             }
                                           `}
                                           onClick={() => {
-                                            if (!hasClaim) setSelectedSourceId(report.report_id)
+                                            setSelectedSourceId(report.report_id)
                                           }}
                                         >
                                           <TableCell className="px-4 py-3 font-mono text-[10px] text-slate-600">
@@ -540,9 +566,30 @@ export default function InsuranceClaimsPage() {
                                       <div className="space-y-4">
                                         <div className="flex justify-between items-center border-b border-slate-50 pb-3">
                                           <span className="text-xs font-bold text-slate-500">Eligibility Check</span>
-                                          <Badge className={bill.form_details?.audit_report?.is_eligible ? "bg-emerald-50 text-emerald-700 border-emerald-100 shadow-sm" : "bg-amber-50 text-amber-700 border-amber-100 shadow-sm"}>
+                                          <Badge className={bill.form_details?.audit_report?.is_eligible ? "bg-emerald-50 text-emerald-700 border-emerald-100 shadow-sm uppercase font-black" : "bg-amber-50 text-amber-700 border-amber-100 shadow-sm uppercase font-black"}>
                                             {bill.form_details?.audit_report?.is_eligible ? "Fully Eligible" : "Manual Override"}
                                           </Badge>
+                                        </div>
+                                        {bill.form_details?.audit_report?.policy_violation && (
+                                          <div className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-start gap-3 animate-pulse shadow-sm">
+                                            <ShieldAlert className="h-4 w-4 text-red-600 mt-0.5" />
+                                            <div>
+                                              <p className="text-[10px] font-black text-red-800 uppercase tracking-widest leading-none mb-1">Policy Violation Detected</p>
+                                              <p className="text-[11px] font-bold text-red-600 leading-tight">{bill.form_details.audit_report.policy_violation}</p>
+                                            </div>
+                                          </div>
+                                        )}
+                                        <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+                                          <span className="text-xs font-bold text-slate-500">Frequency Status</span>
+                                          <span className="text-[11px] font-bold text-slate-700 text-right max-w-[150px] leading-tight">
+                                            {bill.form_details?.audit_report?.frequency_audit || "Standard frequency verified."}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+                                          <span className="text-xs font-bold text-slate-500">Financial Status</span>
+                                          <span className="text-[11px] font-bold text-slate-700 text-right max-w-[150px] leading-tight">
+                                            {bill.form_details?.audit_report?.financial_audit || "No outstanding balances."}
+                                          </span>
                                         </div>
                                         <div className="flex justify-between items-center border-b border-slate-50 pb-3">
                                           <span className="text-xs font-bold text-slate-500">AI Match Score</span>
@@ -615,11 +662,19 @@ export default function InsuranceClaimsPage() {
                             </div>
                           ) : (
                             <Button
-                              className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-sm font-black shadow-lg shadow-blue-200 transition-all rounded-xl gap-2 tracking-wide"
-                              onClick={() => setShowAnalysis(true)}
-                              disabled={!selectedSourceId || filteredCodes.length === 0}
+                              className={`w-full h-11 text-sm font-black shadow-lg transition-all rounded-xl gap-2 tracking-wide ${
+                                isSelectedSourceClaimed 
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 cursor-not-allowed" 
+                                  : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200"
+                              }`}
+                              onClick={() => !isSelectedSourceClaimed && setShowAnalysis(true)}
+                              disabled={!selectedSourceId || filteredCodes.length === 0 || isSelectedSourceClaimed}
                             >
-                              PROCEED TO CLAIM <ChevronRight className="h-4 w-4" />
+                              {isSelectedSourceClaimed ? (
+                                <>ALREADY CLAIMED <ShieldCheck className="h-4 w-4" /></>
+                              ) : (
+                                <>PROCEED TO CLAIM <ChevronRight className="h-4 w-4" /></>
+                              )}
                             </Button>
                           )}
                         </div>
