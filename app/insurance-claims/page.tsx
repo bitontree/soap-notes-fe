@@ -184,6 +184,7 @@ export default function InsuranceClaimsPage() {
   }, [selectedPatient, selectedSourceId])
 
   return (
+
     <div className="flex flex-col min-h-screen bg-[#f8fafc]">
       <Header
         title="Insurance Claims"
@@ -195,30 +196,42 @@ export default function InsuranceClaimsPage() {
 
           {/* Progress Stepper */}
           <div className="w-full max-w-2xl mx-auto mb-10">
-            <div className="flex items-center justify-between relative">
-              {[
-                { step: 1, label: "Select Patient", icon: User },
-                { step: 2, label: "Review Records", icon: FileText },
-                { step: 3, label: "Confirm Claim", icon: ShieldCheck },
-              ].map((item, idx) => (
-                <div key={item.step} className="flex flex-col items-center z-10 relative">
-                  <div className={`
-                    w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300
-                    ${currentStep >= item.step ? "bg-blue-600 text-white shadow-lg scale-110" : "bg-white text-gray-400 border-2 border-gray-100"}
-                  `}>
-                    <item.icon className="h-5 w-5" />
-                  </div>
-                  <span className={`text-xs mt-2 font-medium ${currentStep >= item.step ? "text-blue-700" : "text-gray-400"}`}>
-                    {item.label}
-                  </span>
-
-                  {idx < 2 && (
-                    <div className="absolute top-5 left-10 w-[calc(100vw/5.5)] lg:w-48 h-[2px] -z-0">
-                      <div className={`h-full transition-all duration-500 ${currentStep > item.step ? "bg-blue-600" : "bg-gray-100"}`} />
-                    </div>
-                  )}
+            <div className="flex items-center justify-between">
+              {/* Step 1 */}
+              <div className="flex flex-col items-center flex-shrink-0">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300
+                  ${currentStep >= 1 ? "bg-blue-600 text-white shadow-lg scale-110" : "bg-white text-gray-400 border-2 border-gray-100"}
+                `}>
+                  <User className="h-5 w-5" />
                 </div>
-              ))}
+                <span className={`text-xs mt-2 font-medium ${currentStep >= 1 ? "text-blue-700" : "text-gray-400"}`}>Select Patient</span>
+              </div>
+              {/* Connector 1 */}
+              <div className="flex-1 h-0.5 mx-2 md:mx-4 bg-gray-100 relative">
+                <div className={`absolute left-0 top-0 h-full transition-all duration-500 ${currentStep > 1 ? "bg-blue-600 w-full" : "bg-gray-100 w-full"}`}></div>
+              </div>
+              {/* Step 2 */}
+              <div className="flex flex-col items-center flex-shrink-0">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300
+                  ${currentStep >= 2 ? "bg-blue-600 text-white shadow-lg scale-110" : "bg-white text-gray-400 border-2 border-gray-100"}
+                `}>
+                  <FileText className="h-5 w-5" />
+                </div>
+                <span className={`text-xs mt-2 font-medium ${currentStep >= 2 ? "text-blue-700" : "text-gray-400"}`}>Review Records</span>
+              </div>
+              {/* Connector 2 */}
+              <div className="flex-1 h-0.5 mx-2 md:mx-4 bg-gray-100 relative">
+                <div className={`absolute left-0 top-0 h-full transition-all duration-500 ${currentStep > 2 ? "bg-blue-600 w-full" : "bg-gray-100 w-full"}`}></div>
+              </div>
+              {/* Step 3 */}
+              <div className="flex flex-col items-center flex-shrink-0">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300
+                  ${currentStep >= 3 ? "bg-blue-600 text-white shadow-lg scale-110" : "bg-white text-gray-400 border-2 border-gray-100"}
+                `}>
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <span className={`text-xs mt-2 font-medium ${currentStep >= 3 ? "text-blue-700" : "text-gray-400"}`}>Confirm Claim</span>
+              </div>
             </div>
           </div>
 
